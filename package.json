@@ -1,0 +1,20 @@
+{
+  "name": "stitch",
+  "license": "MIT",
+  "version": "0.0.1",
+  "main": "dist/stitch.js",
+  "module": "dist/stitch.mjs",
+  "types": "dist/stitch.d.ts",
+  "scripts": {
+    "build": "tsup --entry.stitch src/index.ts --format cjs,esm,iife --dts --clean --minify --global-name Stitch",
+    "release": "pnpm run lint:check && pnpm run build && changeset publish",
+    "lint:write": "prettier --write \"**/*.{ts, tsx}\" && tsc",
+    "lint:check": "prettier --check \"**/*.{ts, tsx}\" && tsc"
+  },
+  "devDependencies": {
+    "@changesets/cli": "^2.27.6",
+    "prettier": "^3.3.2",
+    "tsup": "^8.1.0",
+    "typescript": "^5.5.2"
+  }
+}
