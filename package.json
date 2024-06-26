@@ -6,7 +6,7 @@
   "module": "dist/stitch.mjs",
   "types": "dist/stitch.d.ts",
   "scripts": {
-    "build": "tsup --entry.stitch src/index.ts --format cjs,esm,iife --dts --clean --minify --global-name Stitch",
+    "build": "pnpm run lint:write && tsup --entry.stitch src/index.ts --format cjs,esm,iife --dts --clean --minify --global-name Stitch",
     "release": "pnpm run lint:check && pnpm run build && changeset publish",
     "lint:write": "prettier --write \"**/*.{ts, tsx}\" && tsc",
     "lint:check": "prettier --check \"**/*.{ts, tsx}\" && tsc"

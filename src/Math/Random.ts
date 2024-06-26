@@ -23,7 +23,7 @@ export class Random {
   prngA: () => number;
   prngB: () => number;
   constructor(hash: string) {
-    if (!hash) {
+    if (hash === undefined) {
       hash = this.randomHash();
     }
     this.useA = false;
@@ -39,7 +39,7 @@ export class Random {
     for (let i = 0; i < 64; i++) hash += Math.floor(Math.random() * 16).toString(16);
     return hash;
   }
-  random_dec(): number {
+  random_dec() {
     this.useA = !this.useA;
     return this.useA ? this.prngA() : this.prngB();
   }

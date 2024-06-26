@@ -17,7 +17,7 @@ export class ClassicSatin {
     this.segments = [];
   }
 
-  static fromQuadStripVectors(vectors, densityMm = 0.4) {
+  static fromQuadStripVectors(vectors: Vector[], densityMm = 0.4) {
     const run = new ClassicSatin(densityMm);
     for (let i = 0; i < vectors.length; i += 2) {
       run.addVector(vectors[i]);
@@ -25,11 +25,11 @@ export class ClassicSatin {
     return run;
   }
 
-  addVertex(x, y) {
+  addVertex(x: number, y: number) {
     this.addVector(new Vector(x, y));
   }
 
-  addVector(v) {
+  addVector(v: Vector) {
     this.vertices.push(v);
     const vertexCount = this.vertices.length;
     if (vertexCount > 2 && vertexCount % 2 === 0) {
@@ -48,7 +48,7 @@ export class ClassicSatin {
     }
   }
 
-  getStitches(pixelsPerMm) {
+  getStitches(pixelsPerMm: number) {
     const run = [] as Vector[];
     run.push(this.vertices[this.segments[0].side0.startIndex]);
     run.push(this.vertices[this.segments[0].side1.startIndex]);

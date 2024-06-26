@@ -1,3 +1,5 @@
+import { IResolvedStitches } from '../../Core/Pattern';
+
 export interface IWriter {
-  write: (IResolvedStitches, string) => void;
+  write: (resolvedStitches: IResolvedStitches, filename: string) => void;
 }

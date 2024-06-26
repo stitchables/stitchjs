@@ -32,7 +32,14 @@ export class AutoFill {
   bounds: BoundingBox;
   center: Vector;
   distance: number;
-  constructor(shape, angle, rowSpacingMm, stitchSpacingMm, startPosition, endPosition) {
+  constructor(
+    shape: Polyline[],
+    angle: number,
+    rowSpacingMm: number,
+    stitchSpacingMm: number,
+    startPosition: Vector,
+    endPosition: Vector,
+  ) {
     this.shape = shape;
     this.angle = angle;
     this.rowSpacingMm = rowSpacingMm;
@@ -55,14 +62,14 @@ export class AutoFill {
     this.center = this.bounds.min.add(this.bounds.max).multiply(0.5);
     this.distance = this.center.distance(this.bounds.min);
   }
-  getStitches(pixelsPerMm) {
+  getStitches(pixelsPerMm: number) {
     const rows = this.getRows(pixelsPerMm);
     const fillStitchGraph = this.getFillStitchGraph(rows);
     const travelGraph = this.getTravelGraph(fillStitchGraph);
     const stitchPath = this.getStitchPath(fillStitchGraph, travelGraph);
     return this.getStitchesFromPath(stitchPath, fillStitchGraph, pixelsPerMm);
   }
-  getRows(pixelsPerMm) {
+  getRows(pixelsPerMm: number) {
     const rows = [] as IIntersection[][][];
     for (
       let offset = -this.distance;
@@ -105,7 +112,7 @@ export class AutoFill {
     }
     return rows;
   }
-  getFillStitchGraph(rows) {
+  getFillStitchGraph(rows: IIntersection[][][]) {
     const fillStitchGraph = new Graph<IIntersection, { key: string }>();
     for (let i = 0; i < rows.length; i++) {
       for (let j = 0; j < rows[i].length; j++) {
@@ -243,7 +250,11 @@ export class AutoFill {
 
     return newPath;
   }
-  getStitchesFromPath(stitchPath, fillStitchGraph, pixelsPerMm) {
+  getStitchesFromPath(
+    stitchPath: IPathStep[],
+    fillStitchGraph: Graph<IIntersection, { key: string }>,
+    pixelsPerMm: number,
+  ) {
     let stitches = [] as Vector[];
     if (stitchPath[0].key !== 'segment') {
       stitches.push(fillStitchGraph.vertices[stitchPath[0].from].position);
@@ -268,7 +279,7 @@ export class AutoFill {
     }
     return stitches;
   }
-  stitchRow(from, to, pixelsPerMm) {
+  stitchRow(from: IIntersection, to: IIntersection, pixelsPerMm: number) {
     const rowStitches = [] as Vector[];
     const offset = Utils.map(
       from.rowIndex % 2,
@@ -300,12 +311,12 @@ export class AutoFill {
   findPath(
     from: Vector,
     to: Vector,
-    maxStepSize,
-    minStepSize,
+    maxStepSize: number,
+    minStepSize: number,
     nLayer = 0,
-    originalStepSize = null,
-  ) {
-    if (originalStepSize === null) originalStepSize = maxStepSize;
+    originalStepSize?: number,
+  ): Vector[] {
+    if (originalStepSize === undefined) originalStepSize = maxStepSize;
     const queue: Vector[][] = [[from]];
     const visited = new Set();
     while (queue.length > 0) {

@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>AutoFill Example</title>
+    <script src="../dist/stitch.global.js"></script>
+</head>
+<body>
+<script>
+
+  let simplificationRatio = 0.5;
+  let shape = [
+    Stitch.Math.Polyline.fromArrays([
+      [102, 356], [ 24, 251], [ 32, 179], [ 84, 250], [ 58, 145], [ 80, 108], [127,  46], [127, 102],
+      [102, 140], [116, 164], [135, 188], [171, 151], [193, 106], [201,  73], [233,  57], [232,  86],
+      [225, 112], [240, 116], [256,  94], [279,  73], [320,  85], [329, 118], [354, 173], [362, 228],
+      [356, 266], [312, 211], [269, 190], [247, 206], [227, 240], [228, 262], [243, 255], [246, 233],
+      [256, 218], [282, 219], [312, 246], [323, 268], [331, 301], [319, 325], [290, 356], [248, 362],
+      [216, 357], [205, 337], [199, 293], [189, 246], [172, 235], [152, 245], [139, 261], [138, 283],
+      [146, 277], [159, 257], [174, 256], [174, 274], [177, 302], [177, 336], [158, 358], [121, 366]
+    ], true).getSimplified(simplificationRatio),
+    Stitch.Math.Polyline.fromArrays([[142, 324], [142, 296], [121, 297], [108, 315], [125, 338]], true).getSimplified(simplificationRatio),
+    Stitch.Math.Polyline.fromArrays([[206, 139], [194, 150], [203, 166], [217, 146]], true).getSimplified(simplificationRatio),
+    Stitch.Math.Polyline.fromArrays([[234, 309], [234, 326], [260, 326], [286, 295], [286, 264], [254, 279]], true).getSimplified(simplificationRatio)
+  ];
+
+  let pattern = new Stitch.Core.Pattern(400, 400);
+
+  let thread = pattern.addThread(0, 0, 0);
+
+  let angle = 0.25 * Math.PI;
+
+  // underlay
+  thread.addRun(new Stitch.Runs.AutoFill(shape.map(p => p.getOffset(-5).getRounded(5)), angle + 0.5 * Math.PI, 1, 3, shape[0].vertices[0], shape[0].vertices[0]));
+
+  // fill
+  thread.addRun(new Stitch.Runs.AutoFill(shape.map(p => p.getRounded(5)), angle, 0.2, 3, shape[0].vertices[0], shape[0].vertices[0]));
+
+  let svg = Stitch.Graphics.getSvg(pattern, window.innerWidth, window.innerHeight);
+  svg.setAttribute("style", "margin: auto; position: absolute; inset: 0;")
+  document.body.append(svg);
+
+  let modal = Stitch.Browser.Modal.createDownloadModal(pattern, "autoFill", 10, 500);
+  window.addEventListener('click', (e) => {
+    if (e.target === modal.container) modal.close();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyD') modal.open();
+  });
+  document.body.appendChild(modal.container);
+
+
+</script>
+</body>
+</html>

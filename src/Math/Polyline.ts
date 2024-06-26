@@ -14,7 +14,7 @@ export class Polyline {
     polyline.vertices = vectors;
     return polyline;
   }
-  static fromArrays(arrays: number[][], isClosed = false) {
+  static fromArrays(arrays: [number, number][], isClosed = false) {
     const polyline = new Polyline(isClosed);
     for (const array of arrays) polyline.addVertex(array[0], array[1]);
     return polyline;
@@ -27,13 +27,13 @@ export class Polyline {
   addVertex(x: number, y: number): void {
     this.vertices.push(new Vector(x, y));
   }
-  translate(x, y) {
+  translate(x: number, y: number): Polyline {
     const translatePolyline = new Polyline(this.isClosed);
     for (const vertex of this.vertices)
       translatePolyline.addVertex(vertex.x + x, vertex.y + y);
     return translatePolyline;
   }
-  getRounded(radius, stepAngle = 0.1) {
+  getRounded(radius: number, stepAngle = 0.1): Polyline {
     const roundedPolyline = new Polyline(this.isClosed);
     if (!this.isClosed) roundedPolyline.addVertex(this.vertices[0].x, this.vertices[0].y);
     for (
@@ -124,7 +124,7 @@ export class Polyline {
       );
     return roundedPolyline;
   }
-  getResampled(spacing) {
+  getResampled(spacing: number): Polyline {
     if (spacing <= 0 || this.vertices.length === 0) return this;
     let totalLength = 0;
     const lengths = [0];
@@ -157,7 +157,7 @@ export class Polyline {
       );
     return resampledPolyline;
   }
-  getOffset(distance) {
+  getOffset(distance: number): Polyline {
     const offsetPolyline = new Polyline(this.isClosed);
     for (let i = 0; i < this.vertices.length; i++) {
       const prev = this.vertices[(i - 1 + this.vertices.length) % this.vertices.length];
@@ -180,14 +180,14 @@ export class Polyline {
         continue;
       }
       const intersection = Utils.lineLineIntersection(p1, p2, q1, q2);
-      if (intersection) offsetPolyline.vertices.push(intersection);
+      if (intersection instanceof Vector) offsetPolyline.vertices.push(intersection);
     }
     return offsetPolyline;
   }
-  getSimplified(tolerance) {
+  getSimplified(tolerance: number): Polyline {
     // https://gist.github.com/adammiller/826148?permalink_comment_id=317898#gistcomment-317898
     const squaredTolerance = tolerance * tolerance;
-    const simplifyDP = function (v, j, k, mk) {
+    const simplifyDP = function (v: Vector[], j: number, k: number, mk: number[]) {
       if (k < j) return;
       // let [maxi, maxd2, S] = [j, 0, [v[j], v[k]]];
       let maxi = j;
@@ -229,7 +229,7 @@ export class Polyline {
     for (i = m = 0; i < k; i++) if (mk[i]) simplifiedPolyline.vertices.push(vt[i]);
     return simplifiedPolyline;
   }
-  getClosestVertex(position) {
+  getClosestVertex(position: Vector): Vector {
     let [minDistance, result] = [Infinity, new Vector(0, 0)];
     for (let i = 0; i < this.vertices.length; i++) {
       const distance = position.distance(this.vertices[i]);
@@ -273,7 +273,7 @@ export class Polyline {
     }
     return centroid.multiply(1 / 6 / this.getArea());
   }
-  containsPoint(point) {
+  containsPoint(point: Vector): boolean {
     let contains = false;
     for (let i = 0, j = this.vertices.length - 1; i < this.vertices.length; j = i++) {
       if (

@@ -5,10 +5,10 @@ export class Satin {
   polyline: Polyline;
   widthPx: number;
   densityMm: number;
-  constructor(polyline, widthPx, densityMm) {
+  constructor(polyline: Polyline, widthPx: number, densityMm: number) {
     [this.polyline, this.widthPx, this.densityMm] = [polyline, widthPx, densityMm];
   }
-  getStitches(pixelsPerMm) {
+  getStitches(pixelsPerMm: number) {
     const resampled = this.polyline.getResampled(pixelsPerMm * this.densityMm).vertices;
     if (this.polyline.isClosed) resampled.push(resampled[0]);
     const stitches = [] as Vector[];

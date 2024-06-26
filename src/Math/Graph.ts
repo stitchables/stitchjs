@@ -24,15 +24,13 @@ export class Graph<VertexPropertyType, EdgePropertyType> {
     this.vertices[vertexId] = properties;
     this.adjacency[vertexId] = [];
   }
-  addEdge(vertexId1: string, vertexId2: string, properties: EdgePropertyType): void {
+  addEdge(vertexId1: string, vertexId2: string, properties: EdgePropertyType) {
     const edgeId = Object.keys(this.edges).length;
-    if (vertexId1 in this.adjacency) {
-      this.adjacency[vertexId1].push({ edgeId: edgeId, vertexId: vertexId2 });
-    }
+    this.adjacency[vertexId1].push({ edgeId: edgeId, vertexId: vertexId2 });
     this.adjacency[vertexId2].push({ edgeId: edgeId, vertexId: vertexId1 });
     this.edges[edgeId] = { vertexId1, vertexId2, properties };
   }
-  removeEdge(edgeId) {
+  removeEdge(edgeId: number) {
     const edge = this.edges[edgeId];
     for (let i = 0; i < this.adjacency[edge.vertexId1].length; i++) {
       if (this.adjacency[edge.vertexId1][i].edgeId === edgeId) {

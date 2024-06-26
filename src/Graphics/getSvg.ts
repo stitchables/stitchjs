@@ -18,12 +18,9 @@ export function getSvg(
   pattern: Pattern,
   widthPx: number,
   heightPx: number,
-  svgOptions: ISvgOptions,
+  svgOptions: ISvgOptions = defaultSvgOptions,
 ): SVGElement {
-  // if (svgOptions !== undefined) {
-  //   for (const [key, value] of Object.entries(defaultSvgOptions))
-  //     if (!(key as keyof ISvgOptions in svgOptions)) svgOptions[key] = value;
-  // } else svgOptions = defaultSvgOptions;
+  svgOptions = { ...svgOptions, ...defaultSvgOptions };
   const resolvedStitches = pattern.getStitches(
     widthPx,
     heightPx,

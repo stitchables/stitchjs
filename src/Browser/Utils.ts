@@ -9,14 +9,19 @@ export const Utils = {
     for (const [name, value] of Object.entries(attributes))
       element.setAttribute(name, value);
   },
-  setStyles: function (element: HTMLElement, styles: { [name: string]: string }): void {
-    for (const [name, value] of Object.entries(styles)) element.style[name] = value;
+  setStyles: function (element: HTMLElement, styles: { [key: string]: string }): void {
+    for (const [key, value] of Object.entries(styles))
+      element.style.setProperty(key, value);
   },
   setProperties: function (
     element: HTMLElement,
-    properties: { [name: string]: string },
+    properties: { [key: string]: any },
   ): void {
-    for (const [name, value] of Object.entries(properties)) element[name] = value;
+    for (const [key, value] of Object.entries(properties)) {
+      if (element.hasOwnProperty(key)) {
+        (element as any)[key] = value;
+      }
+    }
   },
   createElement: function (
     elementName: string,
@@ -30,8 +35,8 @@ export const Utils = {
     if (properties) this.setProperties(element, properties);
     return element;
   },
-  debounce: function (func, time = 0): (event: Event) => void {
-    let timer;
+  debounce: function (func: TimerHandler, time = 0): (event: Event) => void {
+    let timer: number;
     return function (event) {
       if (timer) clearTimeout(timer);
       timer = setTimeout(func, time, event);
