@@ -22,10 +22,13 @@ export function write(
     0.5 * resolvedStitches.height * resolvedStitches.pixelsPerUnit,
   );
   const scale = resolvedStitches.pixelsPerUnit;
-  for (let t of resolvedStitches.threads) {
-    for (let r of t.runs) {
-      for (let v of r) {
-        v = v.subtract(vTranslate).divide(scale);
+  for (let i = 0; i < resolvedStitches.threads.length; i++) {
+    for (let j = 0; j < resolvedStitches.threads[i].runs.length; j++) {
+      for (let k = 0; k < resolvedStitches.threads[i].runs[j].length; k++) {
+        resolvedStitches.threads[i].runs[j][k] =
+          resolvedStitches.threads[i].runs[j][k].subtract(vTranslate);
+        resolvedStitches.threads[i].runs[j][k] =
+          resolvedStitches.threads[i].runs[j][k].divide(scale);
       }
     }
   }

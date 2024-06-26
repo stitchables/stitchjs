@@ -39,24 +39,24 @@ export class Modal {
       inset: '50%',
       transform: 'translate(-50%, -50%)',
       width: '50%',
-      minWidth: '100px',
-      minHeight: '100px',
+      'min-width': '100px',
+      'min-height': '100px',
       height: '50%',
-      backgroundColor: 'white',
-      borderRadius: '10px',
+      'background-color': 'white',
+      'border-radius': '10px',
       display: 'flex',
-      flexGrow: '1',
-      flexDirection: 'column',
-      justifyContent: 'center',
-      alignItems: 'center',
+      'flex-grow': '1',
+      'flex-direction': 'column',
+      'justify-content': 'center',
+      'align-items': 'center',
     });
 
     modalContent.appendChild(
       Utils.createElement(
         'div',
         {
-          fontSize: '16px',
-          fontWeight: 'bold',
+          'font-size': '16px',
+          'font-weight': 'bold',
           padding: '7px',
         },
         {},
@@ -67,11 +67,11 @@ export class Modal {
     const fileFormatSelect = new Select(['PES', 'DST']);
     Utils.setStyles(fileFormatSelect.container, {
       width: '80%',
-      textAlignLast: 'center',
+      'text-align-last': 'center',
     });
     Utils.setStyles(fileFormatSelect.select, {
       width: '80%',
-      textAlignLast: 'center',
+      'text-align-last': 'center',
     });
     modalContent.appendChild(fileFormatSelect.container);
 
@@ -86,8 +86,8 @@ export class Modal {
       Utils.createElement(
         'div',
         {
-          fontSize: '16px',
-          fontWeight: 'bold',
+          'font-size': '16px',
+          'font-weight': 'bold',
         },
         {},
         { innerHTML: 'Dimensions' },
@@ -109,7 +109,7 @@ export class Modal {
     const dimensionsDisplay = Utils.createElement('div', {
       width: '100%',
       display: 'flex',
-      justifyContent: 'space-evenly',
+      'justify-content': 'space-evenly',
     });
     modalContent.appendChild(dimensionsDisplay);
 
@@ -140,8 +140,8 @@ export class Modal {
     const downloadButton = Utils.createElement(
       'button',
       {
-        fontSize: '16px',
-        fontWeight: 'bold',
+        'font-size': '16px',
+        'font-weight': 'bold',
       },
       {},
       { innerHTML: 'Download' },

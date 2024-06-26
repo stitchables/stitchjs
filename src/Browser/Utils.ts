@@ -18,9 +18,7 @@ export const Utils = {
     properties: { [key: string]: any },
   ): void {
     for (const [key, value] of Object.entries(properties)) {
-      if (element.hasOwnProperty(key)) {
-        (element as any)[key] = value;
-      }
+      (element as any)[key] = value;
     }
   },
   createElement: function (

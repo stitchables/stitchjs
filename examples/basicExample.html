@@ -1,0 +1,228 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <title>Basic Example</title>
+        <script src="../dist/stitch.global.js"></script>
+    </head>
+
+<body>
+<script>
+
+  /********************************* Stitch.js ********************************
+   * Stitch.js is an open library for computational embroidery with           *
+   * Javascript. It differs from other libraries in its focus on creating     *
+   * embroidery patterns which are resolution agnostic. An artist working     *
+   * with the library simply defines the geometry of the pattern and          *
+   * the library will handle all of the steps necessary for scaling that      *
+   * pattern for any output dimensions.                                       *
+   ****************************************************************************/
+
+  /*************************** create a new pattern ***************************
+   * inputs are width and height in pixels                                    *
+   * all geometry added to the pattern should be relative to these dimensions *
+   ****************************************************************************/
+  let pattern = new Stitch.Core.Pattern(350, 200);
+
+  /******************************** add threads *******************************
+   * threads represent different color threads in the pattern                 *
+   * inputs are red, green, and blue values (0-255)                           *
+   * the order in which threads are added determines the order in which thy   *
+   * will be stitched                                                         *
+   ****************************************************************************/
+  let redThread = pattern.addThread(255, 0, 0);
+  let greenThread = pattern.addThread(0, 255, 0);
+  let blueThread = pattern.addThread(0, 0, 255);
+
+  /******************************* create a run *******************************
+   * a run represents a sequence of stitches without jumps or cuts            *
+   * a run can take many different forms, currently three run types are       *
+   * provided by default:                                                     *
+   *   1) Stitch.Runs.Run - this is the most basic run, a simple sequence     *
+   *        of stitches. It takes two inputs:                                 *
+   *        - stitch density: how far apart to make the stitches (mm)         *
+   *        - polyline: geometry of the line                                  *
+   *   2) Stitch.Runs.Satin - a run that follows a line and places            *
+   *        alternating stitches to either side in order to give the line a   *
+   *        thickness. It takes three inputs:                                 *
+   *        - width: how wide to make the line (in pattern units)             *
+   *        - stitch density: how far apart to make the stitches (mm)         *
+   *        - polyline: geometry of the line                                  *
+   *   3) Stitch.Runs.ComplexFill (EXPERIMENTAL) - a run that attempts to     *
+   *        fill a shape, also known as tatami fill. It takes five inputs:    *
+   *        - stitch density: how far apart to make the stitches (mm)         *
+   *        - fill density: how far apart to make the rows of the fill (mm)   *
+   *        - angle: the angle at which the rows will run (radians)           *
+   *        - polyline: geometry of the shapes outline                        *
+   *        - contours: an array of polylines defining and holes in the shape *
+   ****************************************************************************/
+
+  /**************** let's create a simple run around the border ***************/
+  /* create a polyline for the run - there are many ways to do this           *
+   * here we pass in an array of [x, y] arrays - the second parameter         *
+   * indicates whether the polyline is closed or not                          */
+  let borderPointArray = [[0, 0], [pattern.widthPx, 0], [pattern.widthPx, pattern.heightPx], [0, pattern.heightPx]];
+  let borderPolyline = Stitch.Math.Polyline.fromArrays(borderPointArray, true);
+  /* inset the polyline to give it some padding away from the edges - there   *
+   * are many useful methods included in the polyline class                   */
+  let insetBorderPolyline = borderPolyline.getOffset(-2);
+  /* round off the corners of the polyline                                    */
+  let roundedBorderPolyline = insetBorderPolyline.getRounded(5);
+  /* create a run with stitches every 1.5 millimeters                           */
+  let borderRun = new Stitch.Runs.Run(roundedBorderPolyline, 1.5);
+  /* add the run to the thread                                                */
+  redThread.addRun(borderRun);
+  /****************************************************************************/
+
+  /********************** lets create a random satin run **********************/
+  /* set up a random number generator - takes in one optional input hash      */
+  let hash = "0x520c6b1addf3f2f8bca396e2058c5b6624f2c6ef9390184acd79d789ed0944fd";
+  let rng = new Stitch.Math.Random(hash);
+  /* this time we will add the vertices to the polyline in a different way    */
+  let randomPolyline = new Stitch.Math.Polyline(false);
+  for (let i = 0; i < 10; i++) {
+    let x = pattern.widthPx * rng.random_dec();
+    let y = pattern.heightPx * rng.random_dec();
+    randomPolyline.addVertex(x, y);
+  }
+  /* again we will round the polyline - embroidery patterns tend to dislike   *
+   * sharp edges                                                              */
+  let roundedRandomPolyline = randomPolyline.getRounded(10);
+  /* create a satin run with a width of 5 units and stitches every 0.25 mm    */
+  let randomRun = new Stitch.Runs.Satin(roundedRandomPolyline, 5, 0.25);
+  /* add the run to the thread                                                */
+  greenThread.addRun(randomRun);
+  /****************************************************************************/
+
+  /******************************** custom runs *******************************
+   * we can also define our own custom runs - here we are creating a triple   *
+   * rope run. The run follows a polyline forward, then reverses alternating  *
+   * between stitches to the left and right of the line, then again goes      *
+   * forward alternating between stitches to the right and left, and finally  *
+   * ends with a reverse that again follows the line.                         *
+   * Runs such as these will likely be added directly to the library in the   *
+   * near future after further testing                                        *
+   ****************************************************************************/
+  class TripleRopeRun {
+    constructor(polyline, stitchLength = 3, ropeWidth = 3) {
+      [this.polyline, this.stitchLength, this.ropeWidth] = [polyline, stitchLength, ropeWidth];
+    }
+    getStitches(pixelsPerUnit) {
+      let resampled = this.polyline.getResampled(pixelsPerUnit * this.stitchLength).vertices;
+      if (this.polyline.isClosed) resampled.push(resampled[0]);
+      let [middleRope, leftRope, rightRope] = [[], [], [], []];
+      for (let i = 0, stitchCount = 0; i < resampled.length; i++) {
+        if (i === 0 || i === resampled.length - 1) {
+          middleRope.push(resampled[i]);
+          leftRope.push(resampled[i]);
+          rightRope.push(resampled[i]);
+        } else {
+          let [prev, curr, next] = [resampled[i - 1], resampled[i], resampled[i + 1]];
+          let [dPrev, dNext] = [curr.subtract(prev), next.subtract(curr)];
+          if (dPrev.squaredLength() > 0.001 && dNext.squaredLength() > 0.001) {
+            let [nPrev, nNext] = [dPrev.normalized(), dNext.normalized()];
+            let normal = nPrev.add(nNext).divide(2);
+            if (normal.squaredLength() < 0.001) normal = nPrev.rotate(0.5 * Math.PI).multiply(pixelsPerUnit * this.ropeWidth);
+            else normal = normal.rotate(0.5 * Math.PI).multiply(pixelsPerUnit * this.ropeWidth);
+            middleRope.push(resampled[i]);
+            leftRope.push(stitchCount % 2 === 0 ? resampled[i].add(normal) : resampled[i].subtract(normal));
+            rightRope.push(stitchCount % 2 === 1 ? resampled[i].add(normal) : resampled[i].subtract(normal));
+            stitchCount++;
+          }
+        }
+      }
+      return [...middleRope, ...leftRope.reverse(), ...rightRope, ...middleRope.slice().reverse()];
+    }
+  }
+
+  /************** let's create a circle with the triple rope run **************/
+  /* create the polyline - here I will demonstrate the creation of a polyline *
+   * using abstract objects. You can use any objects that have an x and a y   *
+   * property (such as p5.Vector)                                             */
+  let circleObjects = [];
+  for (let a = 0; a < 2 * Math.PI; a += 0.1) {
+    let radius = 0.4 * Math.min(pattern.widthPx, pattern.heightPx);
+    let x = 0.5 * pattern.widthPx + radius * Math.cos(a);
+    let y = 0.5 * pattern.heightPx + radius * Math.sin(a);
+    circleObjects.push({ x, y });
+  }
+  let circlePolyline = Stitch.Math.Polyline.fromObjects(circleObjects, true);
+  /* create a triple rope run with stitches every 2 mm and a width of 0.5 mm  */
+  let circleRun = new TripleRopeRun(circlePolyline, 2, 0.5);
+  /* add the run to the thread                                                */
+  blueThread.addRun(circleRun);
+  /****************************************************************************/
+
+  /***************************** draw the pattern *****************************/
+  /* Stitch.js uses SVG to render the pattern in the browser. The draw()      *
+   * method returns the svg object in case the user wants to apply any        *
+   * additional modifications. There are different draw options to            *
+   * explore as well.                                                         */
+  let svg = Stitch.Graphics.getSvg(pattern, window.innerWidth, window.innerHeight);
+  svg.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+  document.body.append(svg);
+  /****************************************************************************/
+
+  /************** redraw the pattern when the window is resized ***************/
+  /* Stitch.js provides many useful browser centeric utility functions. Here  */
+  /* we use the debounce() function to only redraw the pattern every 10 ms -  */
+  /* useful for computationally intensive patterns                            */
+  window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
+    svg.remove();
+    let svg = Stitch.Graphics.getSvg(pattern, window.innerWidth, window.innerHeight);
+    svg.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+    document.body.append(svg);
+  }, 10));
+  /****************************************************************************/
+
+  /**************************** animate the pattern ***************************
+  /* another helpful browser centric utility is the animateSvgElements()      *
+   * function. This can use useful to visually see how the pattern will       *
+   * stitch out. Uncomment below to activate.                                 */
+  // Stitch.Browser.animateSvgElements(svg.querySelectorAll('path'), 20);
+  /****************************************************************************/
+
+  /************************* create a download modal **************************/
+  /* another useful browser utility is the download modal - this is a window  *
+   * that will pop up and prompt the user for the various parameters needed   *
+   * to output an embroidery file: file type, dimensions, etc.                */
+  let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'basicExample', 10, 500);
+  document.body.appendChild(modal.container);
+  window.addEventListener('click', (e) => {
+    if (e.target === modal.container) modal.close();
+  });
+  /****************************************************************************/
+
+  /*********************** add key press event listener ***********************/
+  /* here we create the "keydown" event listener in order to initiate various *
+   * processes. In this case:                                                 *
+   *   - The "D" key will open up the download modal created above.           *
+   *   - the "1" key will directly download a .dst file with small dimensions *
+   *   - the "2" key will directly download a .dst file with medium dimensions*
+   *   - the "3" key will directly download a .dst file with large dimensions */
+  window.addEventListener("keydown", (e) => {
+    if (e.code === "KeyD") {
+      modal.open();
+    } else if (e.code === "Digit1") {
+      Stitch.IO.write(pattern, Stitch.Units.inToMm(1.75), Stitch.Units.inToMm(1), `basicExampleSmall.dst`);
+    } else if (e.code === "Digit2") {
+      Stitch.IO.write(pattern, Stitch.Units.inToMm(3.5), Stitch.Units.inToMm(2), `basicExampleMedium.dst`);
+    } else if (e.code === "Digit3") {
+      Stitch.IO.write(pattern, Stitch.Units.inToMm(7), Stitch.Units.inToMm(4), `basicExampleLarge.dst`);
+    } else {
+      console.log(`Unmapped key pressed: Code ${e.code}.`);
+    }
+  });
+  /****************************************************************************/
+
+  /**************** create the function for stitchables output ****************/
+  /* stitchables.io is currently setup to use a backend embroidery pattern    *
+   * converter and requires this function in order to work properly.          */
+  function generateEmbroiderySVG(width, height) {
+    return Stitch.Browser.Utils.serializeToString(pattern.getSvg(width, height));
+  }
+  /****************************************************************************/
+
+</script>
+</body>
+
+</html>
