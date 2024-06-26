@@ -1,5 +1,5 @@
 {
-  "name": "@matthewjacobson/stitchjs",
+  "name": "@stitchables/stitchjs",
   "license": "MIT",
   "version": "0.0.1",
   "main": "dist/stitch.js",
