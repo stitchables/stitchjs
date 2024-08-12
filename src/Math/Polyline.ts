@@ -24,8 +24,20 @@ export class Polyline {
     for (const object of objects) polyline.addVertex(object.x, object.y);
     return polyline;
   }
-  addVertex(x: number, y: number): void {
-    this.vertices.push(new Vector(x, y));
+  addVertex(x: number, y: number, unshift = false): void {
+    let v = new Vector(x, y);
+    if (this.vertices.length === 0) {
+      this.vertices.push(v);
+    } else {
+      let other = unshift ? this.vertices[0] : this.vertices[this.vertices.length - 1];
+      if (other.distance(v) > 1e-3) {
+        if (unshift) {
+          this.vertices.unshift(v);
+        } else {
+          this.vertices.push(v);
+        }
+      }
+    }
   }
   translate(x: number, y: number): Polyline {
     const translatePolyline = new Polyline(this.isClosed);

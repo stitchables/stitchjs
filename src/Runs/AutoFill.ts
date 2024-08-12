@@ -159,7 +159,7 @@ export class AutoFill {
     const g = fillStitchGraph.copy();
     let startId = Object.keys(g.vertices)[0];
     let endId = startId;
-    if (this.startPosition !== null || this.endPosition !== null) {
+    if (this.startPosition !== undefined || this.endPosition !== undefined) {
       let [minStartDistance, minEndDistance] = [Infinity, Infinity];
       for (const [id, v] of Object.entries(g.vertices)) {
         const dStart =

@@ -1,0 +1,189 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Basic Example</title>
+    <script src="../../dist/stitch.global.js"></script>
+    <script src="./ln.global.js"></script>
+  </head>
+
+  <body>
+    <script>
+      let renderScene = function (handObjString, glassObjString) {
+
+        let framePaths = [];
+        const [width, height] = [1024.0, (1024.0 * 5) / 3.5];
+        const [widthIn, heightIn] = [3.9 * 3.5 / 5, 3.9];
+        for (let i = 0; i < 360; i += 18) {
+          const eye = ln.Math.Matrix.Rotate(
+            new ln.Math.Vector(0, 1, 0),
+            ln.Math.Radians(i),
+          ).MulPosition(new ln.Math.Vector(0, 3, 2.5));
+          const meshShape = ln.Shapes.SilhouetteMeshShape.FromObjString(
+            handObjString,
+            eye,
+            0.15,
+          );
+          meshShape.UnitCube();
+          meshShape.Transform(
+            ln.Math.Matrix.Rotate(new ln.Math.Vector(0, 0, 1), ln.Math.Radians(-120)),
+          );
+          meshShape.Transform(
+            ln.Math.Matrix.Rotate(new ln.Math.Vector(0, 1, 0), ln.Math.Radians(90)),
+          );
+          meshShape.Transform(
+            ln.Math.Matrix.Rotate(new ln.Math.Vector(0, 0, 1), ln.Math.Radians(-15)),
+          );
+          meshShape.Transform(
+            ln.Math.Matrix.Rotate(new ln.Math.Vector(1, 0, 0), ln.Math.Radians(20)),
+          );
+          meshShape.Transform(
+            ln.Math.Matrix.Rotate(new ln.Math.Vector(1, 0, 0), ln.Math.Radians(30)),
+          );
+          const glassMeshShape = ln.Shapes.SilhouetteMeshShape.FromObjString(
+            glassObjString,
+            eye,
+            0.1,
+          );
+          glassMeshShape.UnitCube();
+          glassMeshShape.Transform(
+            ln.Math.Matrix.Scale(new ln.Math.Vector(0.8, 0.8, 0.8)),
+          );
+          glassMeshShape.Transform(
+            ln.Math.Matrix.Rotate(new ln.Math.Vector(1, 0, 0), ln.Math.Radians(10)),
+          );
+          glassMeshShape.Transform(
+            ln.Math.Matrix.Translate(new ln.Math.Vector(-0.05, 0.02, 0.25)),
+          );
+          glassMeshShape.Transform(
+            ln.Math.Matrix.Rotate(new ln.Math.Vector(1, 0, 0), ln.Math.Radians(30)),
+          );
+
+          const scene = new ln.Core.Scene();
+          scene.Add(meshShape);
+          scene.Add(glassMeshShape);
+          const paths = scene.Render(
+            eye, // eye
+            new ln.Math.Vector(0, 0, 0), // center
+            new ln.Math.Vector(0, 1, 0), // up
+            width,
+            height,
+            25,
+            0.1,
+            100,
+            0.01,
+          );
+          framePaths.push(paths);
+        }
+
+        let joinedFramePaths = framePaths.map(f => Stitch.Optimize.joinPolylines(f.map(p => Stitch.Math.Polyline.fromArrays(p.map(v => [v.X, v.Y]))), 1000));
+        console.log(joinedFramePaths)
+
+        let stitchFrames = [];
+        const stitchSpacingMm = 2;
+        for (let i = 0; i < joinedFramePaths.length; i++) {
+          let pattern = new Stitch.Core.Pattern(width, height);
+          let thread = pattern.addThread(0, 0, 0);
+          for (let path of joinedFramePaths[i]) {
+            thread.addRun(new Stitch.Runs.Run(path, stitchSpacingMm));
+          }
+          let borderPadding = 10;
+          thread.addRun(
+            new Stitch.Runs.Run(
+              Stitch.Math.Polyline.fromArrays([
+                [borderPadding, borderPadding],
+                [pattern.widthPx - borderPadding, borderPadding],
+              ]),
+              3,
+            ),
+          );
+          thread.addRun(
+            new Stitch.Runs.Run(
+              Stitch.Math.Polyline.fromArrays([
+                [pattern.widthPx - borderPadding, borderPadding],
+                [pattern.widthPx - borderPadding, pattern.heightPx - borderPadding],
+              ]),
+              3,
+            ),
+          );
+          thread.addRun(
+            new Stitch.Runs.Run(
+              Stitch.Math.Polyline.fromArrays([
+                [pattern.widthPx - borderPadding, pattern.heightPx - borderPadding],
+                [borderPadding, pattern.heightPx - borderPadding],
+              ]),
+              3,
+            ),
+          );
+          thread.addRun(
+            new Stitch.Runs.Run(
+              Stitch.Math.Polyline.fromArrays([
+                [borderPadding, pattern.heightPx - borderPadding],
+                [borderPadding, borderPadding],
+              ]),
+              3,
+            ),
+          );
+
+          let pixelMultiplier = window.innerWidth / window.innerHeight > pattern.widthPx / pattern.heightPx
+                  ? window.innerHeight / Stitch.Math.Utils.inToMm(heightIn)
+                  : window.innerWidth / Stitch.Math.Utils.inToMm(widthIn)
+          let svg = Stitch.Graphics.getSvg(
+            pattern,
+            window.innerWidth,
+            window.innerHeight, { pixelMultiplier }
+          );
+
+          svg.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+          stitchFrames.push({ pattern, svg });
+        }
+
+        window.addEventListener("keydown", (e) => {
+          if (e.code === "Digit1") {
+            for (let i = 0; i < 10; i++) {
+              Stitch.IO.write(
+                stitchFrames[i].pattern,
+                      Stitch.Math.Utils.inToMm(widthIn),
+                      Stitch.Math.Utils.inToMm(heightIn),
+                `wineAnim-${i.toString().padStart(2, '0')}.dst`,
+              );
+            }
+          }
+          if (e.code === "Digit2") {
+            for (let i = 10; i < 20; i++) {
+              Stitch.IO.write(
+                stitchFrames[i].pattern,
+                      Stitch.Math.Utils.inToMm(widthIn),
+                      Stitch.Math.Utils.inToMm(heightIn),
+                `wineAnim-${i.toString().padStart(2, '0')}.dst`,
+              );
+            }
+          }
+        });
+
+        let frameNum = 0;
+        let animate = function () {
+          let svg = document.querySelector('svg');
+          if (svg) svg.remove();
+          document.body.appendChild(stitchFrames[frameNum % stitchFrames.length].svg);
+          frameNum++;
+          setTimeout(() => {
+            requestAnimationFrame(animate);
+          }, 1000 / 10);
+        };
+        animate();
+      };
+
+      fetch('./lowpoly_hand.obj')
+        .then((res) => res.text())
+        .then((handObjString) => {
+          fetch('./wine_glass.obj')
+            .then((res) => res.text())
+            .then((glassObjString) => {
+              renderScene(handObjString, glassObjString);
+            })
+            .catch((e) => console.error(e));
+        })
+        .catch((e) => console.error(e));
+    </script>
+  </body>
+</html>

@@ -1,11 +1,12 @@
 {
   "name": "@stitchables/stitchjs",
   "license": "MIT",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "main": "dist/stitch.js",
   "module": "dist/stitch.mjs",
   "types": "dist/stitch.d.ts",
   "scripts": {
+    "dev": "pnpm run lint:write && tsup --entry.stitch src/index.ts --format cjs,esm,iife --dts --clean --watch --global-name Stitch",
     "build": "pnpm run lint:write && tsup --entry.stitch src/index.ts --format cjs,esm,iife --dts --clean --minify --global-name Stitch",
     "release": "pnpm run lint:check && pnpm run build && changeset publish",
     "lint:write": "prettier --write \"**/*.{ts, tsx}\" && tsc",

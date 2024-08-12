@@ -20,7 +20,7 @@ export function getSvg(
   heightPx: number,
   svgOptions: ISvgOptions = defaultSvgOptions,
 ): SVGElement {
-  svgOptions = { ...svgOptions, ...defaultSvgOptions };
+  svgOptions = { ...defaultSvgOptions, ...svgOptions };
   const resolvedStitches = pattern.getStitches(
     widthPx,
     heightPx,

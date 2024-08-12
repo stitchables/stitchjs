@@ -56,6 +56,62 @@ export const Utils = {
       Math.abs(v.y - m * v.x - b) / Math.sqrt(m * m + 1),
     );
   },
+  closestPointsOnSegments: function (
+    p1: Vector,
+    p2: Vector,
+    q1: Vector,
+    q2: Vector,
+  ): { distance: number; s: number; t: number; v1: Vector; v2: Vector } {
+    const pd = p2.subtract(p1);
+    const qd = q2.subtract(q1);
+    const r = p1.subtract(q1);
+    const pl2 = pd.squaredLength();
+    const ql2 = qd.squaredLength();
+    const pdr = pd.dot(r);
+    const qdr = qd.dot(r);
+    const pdq = pd.dot(qd);
+
+    let s, t;
+    const EPSILON = 1e-10;
+
+    if (pl2 <= EPSILON && ql2 <= EPSILON) {
+      s = t = 0.0;
+    } else if (pl2 <= EPSILON) {
+      s = 0.0;
+      t = qdr / ql2;
+      t = Math.min(Math.max(t, 0.0), 1.0);
+    } else if (ql2 <= EPSILON) {
+      t = 0.0;
+      s = -pdr / pl2;
+      s = Math.min(Math.max(s, 0.0), 1.0);
+    } else {
+      const denominator = pl2 * ql2 - pdq * pdq;
+      if (denominator !== 0.0) {
+        s = (pdq * qdr - pdr * ql2) / denominator;
+        s = Math.min(Math.max(s, 0.0), 1.0);
+      } else {
+        s = 0.0;
+      }
+      t = (pdq * s + qdr) / ql2;
+      if (t < 0.0) {
+        t = 0.0;
+        s = Math.min(Math.max(-pdr / pl2, 0.0), 1.0);
+      } else if (t > 1.0) {
+        t = 1.0;
+        s = Math.min(Math.max((pdq - pdr) / pl2, 0.0), 1.0);
+      }
+    }
+
+    const closestPointA = p1.add(pd.multiply(s));
+    const closestPointB = q1.add(qd.multiply(t));
+    return {
+      distance: closestPointA.subtract(closestPointB).length(),
+      s: s,
+      t: t,
+      v1: closestPointA,
+      v2: closestPointB,
+    };
+  },
   distance(x1: number, y1: number, x2: number, y2: number) {
     return Math.sqrt((x2 - x1) * (x2 - x1) + (y2 - y1) * (y2 - y1));
   },
