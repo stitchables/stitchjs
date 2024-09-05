@@ -56,6 +56,49 @@ export const Utils = {
       Math.abs(v.y - m * v.x - b) / Math.sqrt(m * m + 1),
     );
   },
+  lineSegmentCircleIntersection(
+    start: Vector,
+    end: Vector,
+    center: Vector,
+    radius: number,
+  ) {
+    // Translate the problem so the circle is centered at the origin
+    const dx = end.x - start.x;
+    const dy = end.y - start.y;
+    const fx = start.x - center.x;
+    const fy = start.y - center.y;
+
+    // Coefficients for the quadratic equation (t^2 * A + t * B + C = 0)
+    const A = dx * dx + dy * dy;
+    const B = 2 * (fx * dx + fy * dy);
+    const C = fx * fx + fy * fy - radius * radius;
+
+    // Discriminant
+    const discriminant = B * B - 4 * A * C;
+
+    if (discriminant < 0) {
+      // No intersection
+      return [];
+    }
+
+    // Calculate the two possible solutions for t
+    const t1 = (-B + Math.sqrt(discriminant)) / (2 * A);
+    const t2 = (-B - Math.sqrt(discriminant)) / (2 * A);
+
+    const points: Vector[] = [];
+
+    // Check if t1 is within the bounds of the line segment
+    if (t1 >= 0 && t1 <= 1) {
+      points.push(new Vector(start.x + t1 * dx, start.y + t1 * dy));
+    }
+
+    // Check if t2 is within the bounds of the line segment
+    if (t2 >= 0 && t2 <= 1) {
+      points.push(new Vector(start.x + t2 * dx, start.y + t2 * dy));
+    }
+
+    return points;
+  },
   closestPointsOnSegments: function (
     p1: Vector,
     p2: Vector,

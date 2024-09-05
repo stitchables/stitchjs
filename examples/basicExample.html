@@ -107,7 +107,7 @@
       [this.polyline, this.stitchLength, this.ropeWidth] = [polyline, stitchLength, ropeWidth];
     }
     getStitches(pixelsPerUnit) {
-      let resampled = this.polyline.getResampled(pixelsPerUnit * this.stitchLength).vertices;
+      let resampled = this.polyline.getRadialDistanceResampled(pixelsPerUnit * this.stitchLength).vertices;
       if (this.polyline.isClosed) resampled.push(resampled[0]);
       let [middleRope, leftRope, rightRope] = [[], [], [], []];
       for (let i = 0, stitchCount = 0; i < resampled.length; i++) {
@@ -168,7 +168,7 @@
   /* useful for computationally intensive patterns                            */
   window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
     svg.remove();
-    let svg = Stitch.Graphics.getSvg(pattern, window.innerWidth, window.innerHeight);
+    svg = Stitch.Graphics.getSvg(pattern, window.innerWidth, window.innerHeight);
     svg.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
     document.body.append(svg);
   }, 10));
@@ -203,11 +203,11 @@
     if (e.code === "KeyD") {
       modal.open();
     } else if (e.code === "Digit1") {
-      Stitch.IO.write(pattern, Stitch.Units.inToMm(1.75), Stitch.Units.inToMm(1), `basicExampleSmall.dst`);
+      Stitch.IO.write(pattern, Stitch.Math.Utils.inToMm(1.75), Stitch.Math.Utils.inToMm(1), `basicExampleSmall.dst`);
     } else if (e.code === "Digit2") {
-      Stitch.IO.write(pattern, Stitch.Units.inToMm(3.5), Stitch.Units.inToMm(2), `basicExampleMedium.dst`);
+      Stitch.IO.write(pattern, Stitch.Math.Utils.inToMm(3.5), Stitch.Math.Utils.inToMm(2), `basicExampleMedium.dst`);
     } else if (e.code === "Digit3") {
-      Stitch.IO.write(pattern, Stitch.Units.inToMm(7), Stitch.Units.inToMm(4), `basicExampleLarge.dst`);
+      Stitch.IO.write(pattern, Stitch.Math.Utils.inToMm(7), Stitch.Math.Utils.inToMm(4), `basicExampleLarge.dst`);
     } else {
       console.log(`Unmapped key pressed: Code ${e.code}.`);
     }

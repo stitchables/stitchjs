@@ -39,6 +39,54 @@ export class Polyline {
       }
     }
   }
+  // https://www.codeproject.com/Articles/114797/Polyline-Simplification#headingRD
+  getRadialDistanceResampled(radius: number): Polyline {
+    const result = new Polyline(this.isClosed);
+    let key = this.vertices[0];
+    result.addVertex(key.x, key.y);
+
+    function getNext(nextKey: Vector, prev: Vector): Vector | undefined {
+      if (key.distance(nextKey) > radius) {
+        const intersections = Utils.lineSegmentCircleIntersection(
+          prev,
+          nextKey,
+          key,
+          radius,
+        );
+        if (intersections.length === 1) {
+          const start = intersections[0];
+          const distance = start.distance(nextKey);
+          if (distance > radius) {
+            result.addVertex(start.x, start.y);
+            const countSamples = Math.floor(distance / radius) - 1;
+            for (let j = 0; j < countSamples; j++) {
+              const w = Utils.map(j + 1, 0, countSamples, 0, 1);
+              const p = start.lerp(nextKey, w);
+              result.addVertex(p.x, p.y);
+            }
+          }
+        }
+        return nextKey;
+      }
+      return undefined;
+    }
+
+    for (
+      let i = 1;
+      i < (this.isClosed ? this.vertices.length + 1 : this.vertices.length);
+      i++
+    ) {
+      const nextKey = getNext(
+        this.vertices[i % this.vertices.length],
+        this.vertices[i - 1],
+      );
+      if (nextKey && i < this.vertices.length) {
+        key = nextKey;
+        result.addVertex(key.x, key.y);
+      }
+    }
+    return result;
+  }
   translate(x: number, y: number): Polyline {
     const translatePolyline = new Polyline(this.isClosed);
     for (const vertex of this.vertices)

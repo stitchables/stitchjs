@@ -10,7 +10,9 @@ export class Run implements IRun {
     this.density = density;
   }
   getStitches(pixelsPerMm: number): Vector[] {
-    const resampled = this.polyline.getResampled(pixelsPerMm * this.density).vertices;
+    const resampled = this.polyline.getRadialDistanceResampled(
+      pixelsPerMm * this.density,
+    ).vertices;
     if (this.polyline.isClosed) return [...resampled, resampled[0]];
     return resampled;
   }

@@ -9,7 +9,9 @@ export class Satin {
     [this.polyline, this.widthPx, this.densityMm] = [polyline, widthPx, densityMm];
   }
   getStitches(pixelsPerMm: number) {
-    const resampled = this.polyline.getResampled(pixelsPerMm * this.densityMm).vertices;
+    const resampled = this.polyline.getRadialDistanceResampled(
+      pixelsPerMm * this.densityMm,
+    ).vertices;
     if (this.polyline.isClosed) resampled.push(resampled[0]);
     const stitches = [] as Vector[];
     for (let i = 0; i < resampled.length; i++) {
