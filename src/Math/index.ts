@@ -4,6 +4,7 @@ import { Polyline } from './Polyline';
 import { Random } from './Random';
 import { Utils } from './Utils';
 import { Vector } from './Vector';
+import { noise } from './Noise';
 
 export const Math = {
   Polyline,
@@ -12,4 +13,5 @@ export const Math = {
   BoundingBox,
   Graph,
   Utils,
+  noise,
 };
