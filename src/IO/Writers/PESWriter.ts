@@ -16,7 +16,10 @@ export class PESWriter implements IWriter {
   writeInt(value: number, bytes: number, endien = 'L'): void {
     this.data.push(Utils.integerToBinary(value, bytes, endien));
   }
-  write(stitchPattern: IResolvedStitches, filename: string) {
+  write(
+    stitchPattern: IResolvedStitches,
+    filename: string,
+  ): (number | string | Uint8Array)[] {
     this.data = [];
     this.writeString('#PES0001');
     this.writeBytes(new Uint8Array([0x16]));
@@ -75,7 +78,7 @@ export class PESWriter implements IWriter {
     );
     for (let i = 0; i < 3; i++) graphicsOffsetValue[i] = graphicsOffsetBytes[i];
     for (let i = 0; i < stitchPattern.threads.length + 1; i++) this.writePECGraphics();
-    Utils.saveData(this.data, filename);
+    return this.data;
   }
   encodeCommand(command: string, dx: number, dy: number): number {
     switch (command) {

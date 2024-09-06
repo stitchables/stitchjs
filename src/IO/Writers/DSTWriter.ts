@@ -125,7 +125,7 @@ export class DSTWriter implements IWriter {
     }
     return new Uint8Array([b0, b1, b2]);
   }
-  write(stitches: IResolvedStitches, filename: string): void {
+  write(stitches: IResolvedStitches, filename: string): (number | string | Uint8Array)[] {
     this.data = [];
     this.data.push(`LA:${Utils.padRight(filename.split('.')[0] || '', 16, ' ')}\r`);
     this.data.push(`ST:${Utils.padLeft(stitches.stitchCount.toString(), 7, ' ')}\r`);
@@ -169,7 +169,7 @@ export class DSTWriter implements IWriter {
     this.data.push(' '.repeat(387));
     this.encodeStitches(stitches);
     this.data.push(this.encodeRecord(0, 0, 'END'));
-    Utils.saveData(this.data, filename);
+    return this.data;
   }
   encodeStitches(stitches: IResolvedStitches): void {
     let xx = 0;

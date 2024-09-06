@@ -13,9 +13,8 @@ export const Utils = {
       alert(`[Stitch.IO.Utils.integerToBinary] Unexpected endien value: ${endien}`);
     return byteArray;
   },
-  saveData: function (data: (number | string | Uint8Array)[], filename: string): void {
-    const blob = new Blob(data as BlobPart[], { type: 'application/octet-stream' });
-    const url = window.URL.createObjectURL(blob);
+  saveData: function (data: Blob, filename: string): void {
+    const url = window.URL.createObjectURL(data);
     const a = document.createElement('a');
     document.body.appendChild(a);
     a.href = url;
