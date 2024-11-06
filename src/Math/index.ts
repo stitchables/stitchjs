@@ -5,6 +5,8 @@ import { Random } from './Random';
 import { Utils } from './Utils';
 import { Vector } from './Vector';
 import { noise } from './Noise';
+import { Quadtree } from './Quadtree';
+import { DensityGrid } from './DensityGrid';
 
 export const Math = {
   Polyline,
@@ -14,4 +16,6 @@ export const Math = {
   Graph,
   Utils,
   noise,
+  Quadtree,
+  DensityGrid,
 };

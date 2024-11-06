@@ -19,11 +19,12 @@ function sfc32(uint128Hex: string): () => number {
 }
 
 export class Random {
+  hash: string;
   useA: boolean;
   prngA: () => number;
   prngB: () => number;
   constructor(hash: string) {
-    if (hash === undefined) {
+    if (!hash) {
       hash = this.randomHash();
     }
     this.useA = false;
@@ -33,6 +34,7 @@ export class Random {
       this.prngA();
       this.prngB();
     }
+    this.hash = hash;
   }
   randomHash(): string {
     let hash = '0x';

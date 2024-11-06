@@ -1,4 +1,5 @@
 import { Vector } from './Vector';
+import { Random } from './Random';
 
 export const Utils = {
   constrain: function (value: number, low: number, high: number) {
@@ -163,5 +164,17 @@ export const Utils = {
   },
   mmToIn: function (millimeters: number) {
     return millimeters / 25.4;
+  },
+  getShuffledArray(array: any[], rng: Random): any[] {
+    const shuffledArray = array.slice();
+    let currentIndex = shuffledArray.length;
+    while (currentIndex !== 0) {
+      let randomIndex = Math.floor(rng.random_dec() * currentIndex--);
+      [shuffledArray[currentIndex], shuffledArray[randomIndex]] = [
+        shuffledArray[randomIndex],
+        shuffledArray[currentIndex],
+      ];
+    }
+    return shuffledArray;
   },
 };

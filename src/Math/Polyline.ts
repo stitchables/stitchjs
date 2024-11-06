@@ -95,21 +95,13 @@ export class Polyline {
   }
   getRounded(radius: number, stepAngle = 0.1): Polyline {
     const roundedPolyline = new Polyline(this.isClosed);
-    if (!this.isClosed) roundedPolyline.addVertex(this.vertices[0].x, this.vertices[0].y);
-    for (
-      let i = this.isClosed ? 0 : 1;
-      this.isClosed ? i < this.vertices.length : i < this.vertices.length - 1;
-      i++
-    ) {
-      const A =
-        this.vertices[(i - 1 + this.vertices.length) % this.vertices.length].copy();
-      const B = this.vertices[i].copy();
-      const C = this.vertices[(i + 1) % this.vertices.length].copy();
+    const getRoundedVertex = function (A: Vector, B: Vector, C: Vector): Vector[] {
+      const result: Vector[] = [];
       const BA = A.subtract(B);
       const BC = C.subtract(B);
-      const BAnorm = BA.copy().normalized();
-      const BCnorm = BC.copy().normalized();
-      const sinA = -BAnorm.dot(BCnorm.copy().rotate(Math.PI / 2));
+      const BAnorm = BA.normalized();
+      const BCnorm = BC.normalized();
+      const sinA = -BAnorm.dot(BCnorm.rotate(Math.PI / 2));
       const sinA90 = BAnorm.dot(BCnorm);
       let angle = Math.asin(sinA);
       let radDirection = 1;
@@ -142,46 +134,57 @@ export class Polyline {
           1) *
         2 *
         Math.PI;
-      if (Math.abs(toAngle - fromAngle) < 0.01) continue;
+      if (Math.abs(toAngle - fromAngle) < 0.01) return result;
       if (!drawDirection) {
         if (fromAngle < toAngle) {
           for (let a = fromAngle; a < toAngle; a += stepAngle) {
-            roundedPolyline.addVertex(
-              cRadius * Math.cos(a) + x,
-              cRadius * Math.sin(a) + y,
-            );
+            result.push(new Vector(cRadius * Math.cos(a) + x, cRadius * Math.sin(a) + y));
           }
         } else {
           for (let a = fromAngle; a < toAngle + 2 * Math.PI; a += stepAngle) {
-            roundedPolyline.addVertex(
-              cRadius * Math.cos(a) + x,
-              cRadius * Math.sin(a) + y,
-            );
+            result.push(new Vector(cRadius * Math.cos(a) + x, cRadius * Math.sin(a) + y));
           }
         }
       } else {
         if (fromAngle > toAngle) {
           for (let a = fromAngle; a > toAngle; a -= stepAngle) {
-            roundedPolyline.addVertex(
-              cRadius * Math.cos(a) + x,
-              cRadius * Math.sin(a) + y,
-            );
+            result.push(new Vector(cRadius * Math.cos(a) + x, cRadius * Math.sin(a) + y));
           }
         } else {
           for (let a = fromAngle; a > toAngle - 2 * Math.PI; a -= stepAngle) {
-            roundedPolyline.addVertex(
-              cRadius * Math.cos(a) + x,
-              cRadius * Math.sin(a) + y,
-            );
+            result.push(new Vector(cRadius * Math.cos(a) + x, cRadius * Math.sin(a) + y));
           }
         }
       }
+      return result;
+    };
+
+    for (let i = 1; i < this.vertices.length - 1; i++) {
+      const A = this.vertices[(i - 1 + this.vertices.length) % this.vertices.length];
+      const B = this.vertices[i];
+      const C = this.vertices[(i + 1) % this.vertices.length];
+      let section = getRoundedVertex(A, B, C);
+      for (const v of section) {
+        roundedPolyline.addVertex(v.x, v.y);
+      }
     }
-    if (!this.isClosed)
+
+    if (this.isClosed) {
+      let A = roundedPolyline.vertices[roundedPolyline.vertices.length - 1];
+      let B = this.vertices[0];
+      let C = roundedPolyline.vertices[0];
+      let section = getRoundedVertex(A, B, C);
+      for (const v of section) {
+        roundedPolyline.addVertex(v.x, v.y);
+      }
+    } else {
+      roundedPolyline.addVertex(this.vertices[0].x, this.vertices[0].y, true);
       roundedPolyline.addVertex(
         this.vertices[this.vertices.length - 1].x,
         this.vertices[this.vertices.length - 1].y,
       );
+    }
+
     return roundedPolyline;
   }
   getResampled(spacing: number): Polyline {

@@ -68,4 +68,13 @@ export class Vector {
   length(): number {
     return Math.sqrt(this.squaredLength());
   }
+  angleBetween(v: Vector): number {
+    const magSqMult = this.squaredLength() * v.squaredLength();
+    // Returns NaN if either vector is the zero vector.
+    if (magSqMult === 0) {
+      return NaN;
+    }
+    const u = this.cross(v);
+    return Math.atan2(u, this.dot(v)) * Math.sign(u || 1);
+  }
 }
