@@ -41,22 +41,22 @@
       let blackPolylineShapes = blackShape.toPolylines();
       for (let polylineShape of blackPolylineShapes) {
         if (polylineShape.polyline.vertices.length > 3) {
-          blackThread.addRun(new Stitch.Runs.Run(polylineShape.polyline, 1));
+          blackThread.addRun(new Stitch.Core.Runs.Run(polylineShape.polyline, 1));
         }
-        blackThread.addRun(new Stitch.Runs.AutoFill([polylineShape.polyline, ...polylineShape.contours], R.random_num(0, Math.PI), 0.2, 3, new Stitch.Math.Vector(0, 0), new Stitch.Math.Vector(0, 0)));
+        blackThread.addRun(new Stitch.Core.Runs.TatamiFill([polylineShape.polyline, ...polylineShape.contours], R.random_num(0, Math.PI), 0.2, 3, new Stitch.Math.Vector(0, 0), new Stitch.Math.Vector(0, 0)));
       }
 
       let redPolylineShapes = redShape.toPolylines();
       for (let polylineShape of redPolylineShapes) {
         if (polylineShape.polyline.vertices.length > 3) {
-          redThread.addRun(new Stitch.Runs.Run(polylineShape.polyline, 1));
+          redThread.addRun(new Stitch.Core.Runs.Run(polylineShape.polyline, 1));
         }
-        redThread.addRun(new Stitch.Runs.AutoFill([polylineShape.polyline, ...polylineShape.contours], R.random_num(0, Math.PI), 0.2, 3, new Stitch.Math.Vector(0, 0), new Stitch.Math.Vector(0, 0)));
+        redThread.addRun(new Stitch.Core.Runs.TatamiFill([polylineShape.polyline, ...polylineShape.contours], R.random_num(0, Math.PI), 0.2, 3, new Stitch.Math.Vector(0, 0), new Stitch.Math.Vector(0, 0)));
       }
 
-      let svg = Stitch.Graphics.getSvg(pattern, window.innerWidth, window.innerHeight);
-      svg.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
-      document.body.append(svg);
+      let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 3);
+      canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+      document.body.append(canvas);
 
       let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'csg', 10, 500);
       document.body.appendChild(modal.container);
@@ -68,10 +68,10 @@
       });
 
       window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
-        svg.remove();
-        svg = Stitch.Graphics.getSvg(pattern, window.innerWidth, window.innerHeight);
-        svg.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
-        document.body.append(svg);
+        canvas.remove();
+        canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 3);
+        canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+        document.body.append(canvas);
       }, 10));
     </script>
   </body>

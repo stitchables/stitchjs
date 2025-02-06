@@ -69,7 +69,7 @@
   /* round off the corners of the polyline                                    */
   let roundedBorderPolyline = insetBorderPolyline.getRounded(5);
   /* create a run with stitches every 1.5 millimeters                           */
-  let borderRun = new Stitch.Runs.Run(roundedBorderPolyline, 1.5);
+  let borderRun = new Stitch.Core.Runs.Run(roundedBorderPolyline, 1.5);
   /* add the run to the thread                                                */
   redThread.addRun(borderRun);
   /****************************************************************************/
@@ -89,7 +89,7 @@
    * sharp edges                                                              */
   let roundedRandomPolyline = randomPolyline.getRounded(10);
   /* create a satin run with a width of 5 units and stitches every 0.25 mm    */
-  let randomRun = new Stitch.Runs.Satin(roundedRandomPolyline, 5, 0.25);
+  let randomRun = new Stitch.Core.Runs.Satin(roundedRandomPolyline, 5, 0.25);
   /* add the run to the thread                                                */
   greenThread.addRun(randomRun);
   /****************************************************************************/
@@ -131,7 +131,7 @@
           }
         }
       }
-      return [...middleRope, ...leftRope.reverse(), ...rightRope, ...middleRope.slice().reverse()];
+      return Stitch.Core.Stitch.fromVectors([...middleRope, ...leftRope.reverse(), ...rightRope, ...middleRope.slice().reverse()]);
     }
   }
 
@@ -154,13 +154,13 @@
   /****************************************************************************/
 
   /***************************** draw the pattern *****************************/
-  /* Stitch.js uses SVG to render the pattern in the browser. The draw()      *
-   * method returns the svg object in case the user wants to apply any        *
-   * additional modifications. There are different draw options to            *
-   * explore as well.                                                         */
-  let svg = Stitch.Graphics.getSvg(pattern, window.innerWidth, window.innerHeight);
-  svg.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
-  document.body.append(svg);
+  /* Stitch.js provides both SVG and Canvas rendering options                 */
+  // let svg = Stitch.Graphics.getSvg(pattern, window.innerWidth, window.innerHeight);
+  // svg.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+  // document.body.append(svg);
+  let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 3);
+  canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+  document.body.append(canvas);
   /****************************************************************************/
 
   /************** redraw the pattern when the window is resized ***************/
@@ -168,10 +168,18 @@
   /* we use the debounce() function to only redraw the pattern every 10 ms -  */
   /* useful for computationally intensive patterns                            */
   window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
-    svg.remove();
-    svg = Stitch.Graphics.getSvg(pattern, window.innerWidth, window.innerHeight);
-    svg.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
-    document.body.append(svg);
+    if (typeof svg !== 'undefined') {
+      svg.remove();
+      svg = Stitch.Graphics.getSvg(pattern, window.innerWidth, window.innerHeight);
+      svg.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+      document.body.append(svg);
+    }
+    if (typeof canvas !== 'undefined') {
+      canvas.remove();
+      canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 3);
+      canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+      document.body.append(canvas);
+    }
   }, 10));
   /****************************************************************************/
 

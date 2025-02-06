@@ -1,18 +1,8 @@
 import { BoundingBox } from '../Math/BoundingBox';
 import { Vector } from '../Math/Vector';
 import { Thread } from './Thread';
-
-export interface IResolvedStitches {
-  width: number;
-  height: number;
-  pixelsPerUnit: number;
-  boundingBox: BoundingBox;
-  stitchCount: number;
-  threads: {
-    thread: Thread;
-    runs: Vector[][];
-  }[];
-}
+import { Stitch } from './Stitch';
+import { IStitchPlan } from './IStitchPlan';
 
 export class Pattern {
   widthPx: number;
@@ -28,13 +18,13 @@ export class Pattern {
     this.threads.push(thread);
     return thread;
   }
-  getStitches(width: number, height: number, pixelMultiplier: number): IResolvedStitches {
+  getStitchPlan(width: number, height: number, pixelMultiplier: number): IStitchPlan {
     const dimensions =
       width / height > this.widthPx / this.heightPx
         ? { width: (this.widthPx / this.heightPx) * height, height: height }
         : { width: width, height: (this.heightPx / this.widthPx) * width };
     const pixelsPerUnit = (pixelMultiplier * this.widthPx) / dimensions.width;
-    const resolvedStitches: IResolvedStitches = {
+    const stitchPlan: IStitchPlan = {
       width: dimensions.width,
       height: dimensions.height,
       pixelsPerUnit: pixelsPerUnit,
@@ -46,26 +36,26 @@ export class Pattern {
       threads: [],
     };
     for (const t of this.threads) {
-      const thread = { thread: t, runs: [] as Vector[][] };
+      const thread = { thread: t, runs: [] as Stitch[][] };
       for (const r of t.runs) {
-        const run: Vector[] = [];
+        const run: Stitch[] = [];
         for (const stitch of r.getStitches(pixelsPerUnit)) {
-          if (isNaN(stitch.x) || isNaN(stitch.y)) continue;
+          if (isNaN(stitch.position.x) || isNaN(stitch.position.y)) continue;
           run.push(stitch);
-          resolvedStitches.stitchCount++;
-          if (stitch.x < resolvedStitches.boundingBox.min.x)
-            resolvedStitches.boundingBox.min.x = stitch.x;
-          if (stitch.y < resolvedStitches.boundingBox.min.y)
-            resolvedStitches.boundingBox.min.y = stitch.y;
-          if (stitch.x > resolvedStitches.boundingBox.max.x)
-            resolvedStitches.boundingBox.max.x = stitch.x;
-          if (stitch.y > resolvedStitches.boundingBox.max.y)
-            resolvedStitches.boundingBox.max.y = stitch.y;
+          stitchPlan.stitchCount++;
+          if (stitch.position.x < stitchPlan.boundingBox.min.x)
+            stitchPlan.boundingBox.min.x = stitch.position.x;
+          if (stitch.position.y < stitchPlan.boundingBox.min.y)
+            stitchPlan.boundingBox.min.y = stitch.position.y;
+          if (stitch.position.x > stitchPlan.boundingBox.max.x)
+            stitchPlan.boundingBox.max.x = stitch.position.x;
+          if (stitch.position.y > stitchPlan.boundingBox.max.y)
+            stitchPlan.boundingBox.max.y = stitch.position.y;
         }
         thread.runs.push(run);
       }
-      resolvedStitches.threads.push(thread);
+      stitchPlan.threads.push(thread);
     }
-    return resolvedStitches;
+    return stitchPlan;
   }
 }

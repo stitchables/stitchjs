@@ -126,8 +126,9 @@
         let pattern = new Stitch.Core.Pattern(width, height);
         let thread = pattern.addThread(0, 0, 0);
         for (let polyline of joinedPolylines) {
-          thread.addRun(new Stitch.Runs.Run(polyline, stitchLengthMm));
+          thread.addRun(new Stitch.Core.Runs.Run(polyline, stitchLengthMm));
         }
+
         let svg = Stitch.Graphics.getSvg(pattern, window.innerWidth, window.innerHeight);
         svg.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
 

@@ -1,6 +1,6 @@
 import { IWriter } from './IWriter';
 import { Utils } from './Utils';
-import { IResolvedStitches } from '../../Core/Pattern';
+import { IStitchPlan } from '../../Core/IStitchPlan';
 
 export class DSTWriter implements IWriter {
   data: (number | string | Uint8Array)[];
@@ -125,37 +125,37 @@ export class DSTWriter implements IWriter {
     }
     return new Uint8Array([b0, b1, b2]);
   }
-  write(stitches: IResolvedStitches, filename: string): (number | string | Uint8Array)[] {
+  write(stitchPlan: IStitchPlan, filename: string): (number | string | Uint8Array)[] {
     this.data = [];
     this.data.push(`LA:${Utils.padRight(filename.split('.')[0] || '', 16, ' ')}\r`);
-    this.data.push(`ST:${Utils.padLeft(stitches.stitchCount.toString(), 7, ' ')}\r`);
+    this.data.push(`ST:${Utils.padLeft(stitchPlan.stitchCount.toString(), 7, ' ')}\r`);
     this.data.push(
-      `CO:${Utils.padLeft((stitches.threads.length - 1).toString(), 3, ' ')}\r`,
+      `CO:${Utils.padLeft((stitchPlan.threads.length - 1).toString(), 3, ' ')}\r`,
     );
     this.data.push(
       `+X:${Utils.padLeft(
-        Math.ceil(0.1 * 0.5 * stitches.width * stitches.pixelsPerUnit).toString(),
+        Math.ceil(0.1 * 0.5 * stitchPlan.width * stitchPlan.pixelsPerUnit).toString(),
         5,
         ' ',
       )}\r`,
     );
     this.data.push(
       `-X:${Utils.padLeft(
-        Math.ceil(0.1 * 0.5 * stitches.width * stitches.pixelsPerUnit).toString(),
+        Math.ceil(0.1 * 0.5 * stitchPlan.width * stitchPlan.pixelsPerUnit).toString(),
         5,
         ' ',
       )}\r`,
     );
     this.data.push(
       `+Y:${Utils.padLeft(
-        Math.ceil(0.1 * 0.5 * stitches.height * stitches.pixelsPerUnit).toString(),
+        Math.ceil(0.1 * 0.5 * stitchPlan.height * stitchPlan.pixelsPerUnit).toString(),
         5,
         ' ',
       )}\r`,
     );
     this.data.push(
       `-Y:${Utils.padLeft(
-        Math.ceil(0.1 * 0.5 * stitches.height * stitches.pixelsPerUnit).toString(),
+        Math.ceil(0.1 * 0.5 * stitchPlan.height * stitchPlan.pixelsPerUnit).toString(),
         5,
         ' ',
       )}\r`,
@@ -167,26 +167,26 @@ export class DSTWriter implements IWriter {
     this.data.push('PD:******\r');
     this.data.push(new Uint8Array([0x1a]));
     this.data.push(' '.repeat(387));
-    this.encodeStitches(stitches);
+    this.encodeStitches(stitchPlan);
     this.data.push(this.encodeRecord(0, 0, 'END'));
     return this.data;
   }
-  encodeStitches(stitches: IResolvedStitches): void {
+  encodeStitches(stitchPlan: IStitchPlan): void {
     let xx = 0;
     let yy = 0;
-    for (let i = 0; i < stitches.threads.length; i++) {
+    for (let i = 0; i < stitchPlan.threads.length; i++) {
       if (i > 0) this.data.push(this.encodeRecord(0, 0, 'COLOR_CHANGE'));
-      for (let j = 0; j < stitches.threads[i].runs.length; j++) {
+      for (let j = 0; j < stitchPlan.threads[i].runs.length; j++) {
         if (j > 0)
           this.data.push(
             this.encodeRecord(2, 2, 'JUMP'),
             this.encodeRecord(-4, -4, 'JUMP'),
             this.encodeRecord(2, 2, 'JUMP'),
           ); // trim
-        for (let k = 0; k < stitches.threads[i].runs[j].length; k++) {
-          const stitch = stitches.threads[i].runs[j][k];
-          const x = 10 * stitch.x;
-          const y = 10 * stitch.y;
+        for (let k = 0; k < stitchPlan.threads[i].runs[j].length; k++) {
+          const stitch = stitchPlan.threads[i].runs[j][k];
+          const x = 10 * stitch.position.x;
+          const y = 10 * stitch.position.y;
           let dx = Math.round(x - xx);
           let dy = Math.round(y - yy);
           xx += dx;

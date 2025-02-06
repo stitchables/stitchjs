@@ -21,7 +21,7 @@ export function getSvg(
   svgOptions: ISvgOptions = defaultSvgOptions,
 ): SVGElement {
   svgOptions = { ...defaultSvgOptions, ...svgOptions };
-  const resolvedStitches = pattern.getStitches(
+  const resolvedStitches = pattern.getStitchPlan(
     widthPx,
     heightPx,
     svgOptions.pixelMultiplier,
@@ -40,8 +40,8 @@ export function getSvg(
     for (const r of t.runs) {
       let d = '';
       for (const [i, stitch] of r.entries()) {
-        const x = Number(stitch.x.toPrecision(svgOptions.significantFigures));
-        const y = Number(stitch.y.toPrecision(svgOptions.significantFigures));
+        const x = Number(stitch.position.x.toPrecision(svgOptions.significantFigures));
+        const y = Number(stitch.position.y.toPrecision(svgOptions.significantFigures));
         d += `${i === 0 ? 'M' : ' L'} ${x} ${y}`;
       }
       const path = document.createElementNS(svgOptions.svgNamespace, 'path');

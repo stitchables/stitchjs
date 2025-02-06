@@ -1,4 +1,4 @@
-import { IRun } from '../Runs/IRun';
+import { IRun } from './IRun';
 
 export class Thread {
   red: number;

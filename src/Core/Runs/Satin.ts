@@ -1,5 +1,6 @@
-import { Polyline } from '../Math/Polyline';
-import { Vector } from '../Math/Vector';
+import { Polyline } from '../../Math/Polyline';
+import { Vector } from '../../Math/Vector';
+import { Stitch } from '../Stitch';
 
 export class Satin {
   polyline: Polyline;
@@ -24,6 +25,6 @@ export class Satin {
       stitches.push(current.add(normal.multiply(0.5 * this.widthPx)));
       stitches.push(current.subtract(normal.multiply(0.5 * this.widthPx)));
     }
-    return stitches;
+    return Stitch.fromVectors(stitches);
   }
 }

@@ -103,27 +103,63 @@
       ];
 
       let pattern = new Stitch.Core.Pattern(400, 400);
-      let thread = pattern.addThread(0, 0, 0);
+      let thread = pattern.addThread(200, 0, 0);
 
-      let angle = 0;
+      let angle = Math.random();
       thread.addRun(
-        new Stitch.Runs.PatternFill(
+        new Stitch.Core.Runs.PatternFill(
           shape.map((p) => p.getRounded(5)),
-          angle,
-          0.2,
+          0,
+          0.25,
           [
-            {rowOffsetMm: 0, rowPatternMm: [6, 3]},
-            {rowOffsetMm: 0, rowPatternMm: [6, 3]},
-            {rowOffsetMm: 0, rowPatternMm: [6, 3]},
-            {rowOffsetMm: 0, rowPatternMm: [6, 3]},
-            {rowOffsetMm: 0, rowPatternMm: [6, 3]},
-            {rowOffsetMm: 0, rowPatternMm: [6, 3]},
-            {rowOffsetMm: 3, rowPatternMm: [6, 3]},
-            {rowOffsetMm: 3, rowPatternMm: [6, 3]},
-            {rowOffsetMm: 3, rowPatternMm: [6, 3]},
-            {rowOffsetMm: 3, rowPatternMm: [6, 3]},
-            {rowOffsetMm: 3, rowPatternMm: [6, 3]},
-            {rowOffsetMm: 3, rowPatternMm: [6, 3]},
+            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
+            {rowOffsetMm: 0, rowPatternMm: [3]},
           ],
           3,
           shape[0].vertices[0],
@@ -131,9 +167,9 @@
         ),
       );
 
-      let svg = Stitch.Graphics.getSvg(pattern, window.innerWidth, window.innerHeight);
-      svg.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
-      document.body.append(svg);
+      let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
+      canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+      document.body.append(canvas);
 
       let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'patternFill', 10, 500);
       document.body.appendChild(modal.container);
@@ -145,10 +181,10 @@
       });
 
       window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
-        svg.remove();
-        svg = Stitch.Graphics.getSvg(pattern, window.innerWidth, window.innerHeight);
-        svg.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
-        document.body.append(svg);
+        canvas.remove();
+        canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
+        canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+        document.body.append(canvas);
       }, 10));
     </script>
   </body>

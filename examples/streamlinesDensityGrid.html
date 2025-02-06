@@ -1,0 +1,250 @@
+<!doctype html>
+<html>
+<head>
+    <title>Streamlines Density Grid Example</title>
+    <script src="../dist/stitch.global.js"></script>
+    <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
+</head>
+<body>
+<script>
+
+    class QT {
+        constructor(bb, cap) {
+            this.bb = bb;
+            this.cap = cap;
+            this.ps = [];
+            this.cs = [];
+            this.div = false;
+        }
+        sub() {
+            for (let i of [-1, 1]) for (let j of [-1, 1]) {
+                this.cs.push(new QT(new BB([this.bb.p[0] + i * 0.5 * this.bb.d[0], this.bb.p[1] + j * 0.5 * this.bb.d[1]], [0.5 * this.bb.d[0], 0.5 * this.bb.d[1]]), this.cap));
+            }
+            for (let p of this.ps) for (let c of this.cs) if (c.bb.cont(p)) c.ins(p);
+            this.ps = [];
+            this.div = true;
+        }
+        ins(p) {
+            if (!this.bb.cont(p.p)) return false;
+            if (this.ps.length < this.cap && !this.div) {
+                this.ps.push(p);
+                return true;
+            } else {
+                if (!this.div) this.sub();
+                for (let c of this.cs) if (c.ins(p)) return true;
+            }
+        }
+        q(rng, f) {
+            if (!f) f = [];
+            if (!this.bb.inter(rng)) return;
+            else {
+                for (let p of this.ps) if (rng.cont(p)) f.push(p);
+                if (this.div) for (let c of this.cs) c.q(rng, f);
+            }
+            return f;
+        }
+    }
+
+    class BB {
+        constructor(p, d) {
+            this.p = p;
+            this.d = d;
+        }
+        cont(p) {
+            for (let i of [0, 1]) if (p[i] < this.p[i] - this.d[i] || p[i] >= this.p[i] + this.d[i]) return false;
+            return true;
+        }
+        inter(bb) {
+            for (let i of [0, 1]) if (bb.p[i] - bb.d[i] > this.p[i] + this.d[i] || bb.p[i] + bb.d[i] < this.p[i] - this.d[i]) return false;
+            return true;
+        }
+    }
+
+    class ESS {
+        constructor(d, vf, sf, dsf) {
+            this.d = d;
+            this.vf = vf;
+            this.sf = sf;
+            this.dsf = dsf;
+            this.qt = new QT(new BB([0.5 * d[0], 0.5 * d[1]], [0.5 * d[0], 0.5 * d[1]]), 4);
+            this.sl = [];
+        }
+        rst() {
+            this.qt = new QT(new BB([0.5 * this.d[0], 0.5 * this.d[1]], [0.5 * this.d[0], 0.5 * this.d[1]]), 4);
+            this.sl = [];
+        }
+        csl(s) {
+            if (this.cp(s) || this.sl.length == 0) {
+                let tl = this.cssl(s);
+                this.sl.push(tl);
+                for (let p of tl) this.qt.ins({p: p, i: this.sl.length - 1});
+                for (let p of tl) {
+                    let o = this.vf(p);
+                    o = this.nrm(o);
+                    o = this.rot(o);
+                    o = this.mult(o, this.sf(p));
+                    this.csl([p[0] + o[0], p[1] + o[1]]);
+                    this.csl([p[0] - o[0], p[1] - o[1]]);
+                }
+            }
+            return this.sl;
+        }
+        cssl(s) {
+            let tqt = new QT(new BB([0.5 * this.d[0], 0.5 * this.d[1]], [0.5 * this.d[0], 0.5 * this.d[1]]), 4);
+            let l = 0;
+            tqt.ins({p: s, l: l});
+            let tl = [s];
+            let fl = false;
+            while(true) {
+                let lp = tl[tl.length - 1];
+                let d = this.vf(lp);
+                if (fl) d = this.mult(d, -1);
+                let np = [lp[0] + d[0], lp[1] + d[1]];
+                // let di = dist(0, 0, d[0], d[1]);
+                let di = Math.sqrt(d[0] * d[0] + d[1] * d[1]);
+                if (!this.cp(np, tqt, di, l, lp)) {
+                    if (!fl) {
+                        tl.reverse();
+                        l = 0;
+                        fl = true;
+                    } else return tl;
+                } else {
+                    tl.push(np);
+                    l += fl ? -di : di;
+                    tqt.ins({p: np, l: l});
+                }
+            }
+        }
+        // check point
+        cp(p, tqt, di, l, pp) {
+            if (!this.cb(p)) return false;
+            if (di) if (!this.csn(di)) return false;
+            if (!this.csp(p, pp)) return false;
+            if (pp) if (!this.csi(tqt, l, p)) return false;
+            return true;
+        }
+        // check boundary
+        cb(p) {
+            for (let i of [0, 1]) if (p[i] < 0 || p[i] > this.d[i]) return false;
+            return true;
+        }
+        // check sink
+        csn(di) { return di > 0.001; }
+        // check separation
+        csp(p, pp) {
+            let s = this.sf(p);
+            let ds = 1;
+            if (pp) ds = this.dsf(p);
+            let ns = this.qt.q(new BB(p, [s, s]));
+            // for (let n of ns) if (dist(p[0], p[1], n.p[0], n.p[1]) < ds * s) return false;
+            for (let n of ns) if (Math.sqrt((n.p[0] - p[0]) * (n.p[0] - p[0]) + (n.p[1] - p[1]) * (n.p[1] - p[1])) < ds * s) return false;
+            return true;
+        }
+        csi(tqt, l, p) {
+            let s = this.sf(p);
+            let ns = tqt.q(new BB(p, [s, s]));
+            for (let n of ns) {
+                // let cd = dist(p[0], p[1], n.p[0], n.p[1]);
+                let cd = Math.sqrt((n.p[0] - p[0]) * (n.p[0] - p[0]) + (n.p[1] - p[1]) * (n.p[1] - p[1]));
+                if (cd < s && Math.abs(l - n.l) > s) return false;
+            }
+            return true;
+        }
+        nrm(v) {
+            // let l = dist(0, 0, v[0], v[1]);
+            let l = Math.sqrt(v[0] * v[0] + v[1] * v[1]);
+            return [v[0] / l, v[1] / l];
+        }
+        rot(v) { return [v[1], -v[0]]; }
+        mult(v, m) { return [m * v[0], m * v[1]]; }
+        getSl() {
+            let output = [];
+            for (let sli = 0; sli < this.sl.length; sli++) {
+                let sl = this.sl[sli];
+                let sld = [];
+                for (let p of sl) {
+                    let sf = this.sf(p);
+                    let dsf = this.dsf(p);
+                    let ns = this.qt.q(new BB(p, [sf, sf]));
+                    // let minDist = min(min(p[0], this.d[0] - p[0]), min(p[1], this.d[1] - p[1]));
+                    let minDist = Infinity;
+                    for (let n of ns) {
+                        if (sli != n.i) {
+                            // let currDist = dist(p[0], p[1], n.p[0], n.p[1]);
+                            let currDist = Math.sqrt((n.p[0] - p[0]) * (n.p[0] - p[0]) + (n.p[1] - p[1]) * (n.p[1] - p[1]))
+                            if (currDist < minDist) minDist = currDist;
+                        }
+                    }
+                    let tCoeff = minDist >= sf ? 1 : (minDist - sf * dsf) / (sf - sf * dsf);
+                    sld.push({x: p[0], y: p[1], t: tCoeff});
+                }
+                output.push(sld);
+            }
+            return output;
+        }
+    }
+
+    let [w, h] = [1000, 1000];
+
+    let scn = function(px, py, sx, sy, omi, oma) {
+        let x = 0.25 * (px + 10000) / sx;
+        let y = 0.25 * (py + 10000) / sy;
+        let z = 0.2 * Math.cos(2 * Math.PI) + 100;
+        let w = 0.2 * Math.sin(2 * Math.PI) + 100;
+        return Stitch.Math.Utils.map(Stitch.Math.noise(x, y, z, w), 0, 1, omi, oma);
+    }
+    let vf = function(p) {
+        let a = scn(p[0], p[1], 0.3 * w, 0.3 * h, 0, 4 * Math.PI);
+        let r = 0.003 * Math.min(w, h);
+        let o = Math.PI;
+        // let o = 0;
+        return [r * Math.cos(a + o), r * Math.sin(a + o)];
+    };
+    let sf = function(p) { return 0.01 * Math.min(w, h); }
+    let dsf = function(p) { return 0.01; }
+    let ess = new ESS([w, h], vf, sf, dsf);
+    for (let x = 0; x < w; x += 10) {
+        for (let y = 0; y < h; y += 10) {
+            ess.csl([x, y]);
+        }
+    }
+    let sld = ess.getSl();
+
+    let pattern = new Stitch.Core.Pattern(w, h);
+    let thread = pattern.addThread(0, 0, 0);
+    for (let sl of sld) {
+        let polyline = new Stitch.Math.Polyline(false);
+        for (let p of sl) {
+        	polyline.addVertex(p.x, p.y);
+        }
+        thread.addRun(new Stitch.Core.Runs.Run(polyline, 1.5));
+    }
+
+    let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
+    canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+    document.body.append(canvas);
+
+    console.log(window.innerWidth)
+    let stitchDensityCanvas = Stitch.Graphics.getStitchDensityCanvas(pattern, window.innerWidth, window.innerHeight, 127, 127, 0.25, 3, 10, [255, 0, 0]);
+    stitchDensityCanvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+    document.body.append(stitchDensityCanvas);
+
+    let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'streamlinesDensityGrid', 10, 500);
+    document.body.appendChild(modal.container);
+    window.addEventListener('click', (e) => { if (e.target === modal.container) modal.close(); });
+    window.addEventListener('keydown', (e) => { if (e.code === 'KeyD') modal.open(); });
+
+    window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
+        canvas.remove();
+        canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
+        canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+        document.body.append(canvas);
+        stitchDensityCanvas.remove();
+        stitchDensityCanvas = Stitch.Graphics.getStitchDensityCanvas(pattern, window.innerWidth, window.innerHeight, 127, 127, 0.25, 3, 10, [255, 0, 0]);
+        stitchDensityCanvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+        document.body.append(stitchDensityCanvas);
+    }, 10));
+
+</script>
+</body>
+</html>

@@ -189,7 +189,7 @@
 
 
 
-      let frameCount = 50;
+      let frameCount = 12;
       let [w, h] = [1000, 1000];
       let patterns = [];
       for (let f = 0; f < frameCount; f++) {
@@ -226,7 +226,7 @@
           // }
           // thread.addRun(new Stitch.Runs.Run(polyline, 1.5));
           if (sl.length > 3) {
-            let classicSatin = new Stitch.Runs.ClassicSatin(1);
+            let classicSatin = new Stitch.Core.Runs.ClassicSatin(1);
             for (let i = 1; i < sl.length - 1; i++) {
               let prev = new Stitch.Math.Vector(sl[i - 1].x, sl[i - 1].y);
               let curr = new Stitch.Math.Vector(sl[i - 0].x, sl[i - 0].y);
@@ -242,16 +242,18 @@
         patterns.push(pattern);
       }
 
-      let svg = Stitch.Graphics.getSvg(patterns[0], window.innerWidth, window.innerHeight);
-      svg.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
-      document.body.append(svg);
+      let canvases = [];
+      for (let i = 0; i < patterns.length; i++) {
+        let canvas = Stitch.Graphics.getCanvas(patterns[i], window.innerWidth, window.innerHeight, 3);
+        canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0; visibility: hidden;');
+        canvases.push(canvas);
+        document.body.append(canvas);
+      }
 
       function animate() {
         c++;
-        svg.remove();
-        svg = Stitch.Graphics.getSvg(patterns[c % frameCount], window.innerWidth, window.innerHeight);
-        svg.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
-        document.body.append(svg);
+        canvases[(c - 1) % frameCount].style.visibility = 'hidden';
+        canvases[c % frameCount].style.visibility = 'visible';
         requestAnimationFrame(() => { setTimeout(animate, 120); });
       }
       let c = 0;

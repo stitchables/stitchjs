@@ -1,5 +1,6 @@
-import { Utils } from '../Math/Utils';
-import { Vector } from '../Math/Vector';
+import { Utils } from '../../Math/Utils';
+import { Vector } from '../../Math/Vector';
+import { Stitch } from '../Stitch';
 
 interface ISegmentSide {
   startIndex: number;
@@ -73,6 +74,6 @@ export class ClassicSatin {
         );
       }
     }
-    return run;
+    return Stitch.fromVectors(run);
   }
 }

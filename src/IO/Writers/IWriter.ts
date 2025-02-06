@@ -1,8 +1,5 @@
-import { IResolvedStitches } from '../../Core/Pattern';
+import { IStitchPlan } from '../../Core/IStitchPlan';
 
 export interface IWriter {
-  write: (
-    resolvedStitches: IResolvedStitches,
-    filename: string,
-  ) => (number | string | Uint8Array)[];
+  write: (stitchPlan: IStitchPlan, filename: string) => (number | string | Uint8Array)[];
 }

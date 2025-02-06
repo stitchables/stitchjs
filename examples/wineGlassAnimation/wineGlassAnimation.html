@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
   <head>
-    <title>Basic Example</title>
+    <title>Wine Glass Animation Example</title>
     <script src="../../dist/stitch.global.js"></script>
     <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
     <script src="./ln.global.js"></script>
@@ -85,11 +85,11 @@
           let pattern = new Stitch.Core.Pattern(width, height);
           let thread = pattern.addThread(0, 0, 0);
           for (let path of joinedFramePaths[i]) {
-            thread.addRun(new Stitch.Runs.Run(path, stitchSpacingMm));
+            thread.addRun(new Stitch.Core.Runs.Run(path, stitchSpacingMm));
           }
           let borderPadding = 10;
           thread.addRun(
-            new Stitch.Runs.Run(
+            new Stitch.Core.Runs.Run(
               Stitch.Math.Polyline.fromArrays([
                 [borderPadding, borderPadding],
                 [pattern.widthPx - borderPadding, borderPadding],
@@ -98,7 +98,7 @@
             ),
           );
           thread.addRun(
-            new Stitch.Runs.Run(
+            new Stitch.Core.Runs.Run(
               Stitch.Math.Polyline.fromArrays([
                 [pattern.widthPx - borderPadding, borderPadding],
                 [pattern.widthPx - borderPadding, pattern.heightPx - borderPadding],
@@ -107,7 +107,7 @@
             ),
           );
           thread.addRun(
-            new Stitch.Runs.Run(
+            new Stitch.Core.Runs.Run(
               Stitch.Math.Polyline.fromArrays([
                 [pattern.widthPx - borderPadding, pattern.heightPx - borderPadding],
                 [borderPadding, pattern.heightPx - borderPadding],
@@ -116,7 +116,7 @@
             ),
           );
           thread.addRun(
-            new Stitch.Runs.Run(
+            new Stitch.Core.Runs.Run(
               Stitch.Math.Polyline.fromArrays([
                 [borderPadding, pattern.heightPx - borderPadding],
                 [borderPadding, borderPadding],

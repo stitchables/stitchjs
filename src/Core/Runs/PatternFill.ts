@@ -1,8 +1,10 @@
-import { BoundingBox } from '../Math/BoundingBox';
-import { Graph } from '../Math/Graph';
-import { Polyline } from '../Math/Polyline';
-import { Utils } from '../Math/Utils';
-import { Vector } from '../Math/Vector';
+import { BoundingBox } from '../../Math/BoundingBox';
+import { Graph } from '../../Math/Graph';
+import { Polyline } from '../../Math/Polyline';
+import { Utils } from '../../Math/Utils';
+import { Vector } from '../../Math/Vector';
+import { Stitch } from '../Stitch';
+import { StitchType } from '../EStitchType';
 
 interface IIntersection {
   shapeIndex: number;
@@ -20,11 +22,15 @@ interface IPathStep {
   key: string;
 }
 
-export class AutoFill {
+export class PatternFill {
   shape: Polyline[];
   angle: number;
   rowSpacingMm: number;
-  stitchSpacingMm: number;
+  stitchPatternMm: {
+    rowOffsetMm: number;
+    rowPatternMm: number[];
+  }[] = [];
+  travelSpacingMm: number;
   startPosition?: Vector;
   endPosition?: Vector;
   direction: Vector;
@@ -36,14 +42,19 @@ export class AutoFill {
     shape: Polyline[],
     angle: number,
     rowSpacingMm: number,
-    stitchSpacingMm: number,
+    stitchPatternMm: {
+      rowOffsetMm: number;
+      rowPatternMm: number[];
+    }[],
+    travelSpacingMm: number,
     startPosition: Vector,
     endPosition: Vector,
   ) {
     this.shape = shape;
     this.angle = angle;
     this.rowSpacingMm = rowSpacingMm;
-    this.stitchSpacingMm = stitchSpacingMm;
+    this.stitchPatternMm = stitchPatternMm;
+    this.travelSpacingMm = travelSpacingMm;
     this.startPosition = startPosition;
     this.endPosition = endPosition;
     this.direction = Vector.fromAngle(this.angle);
@@ -62,7 +73,7 @@ export class AutoFill {
     this.center = this.bounds.min.add(this.bounds.max).multiply(0.5);
     this.distance = this.center.distance(this.bounds.min);
   }
-  getStitches(pixelsPerMm: number) {
+  getStitches(pixelsPerMm: number): Stitch[] {
     const rows = this.getRows(pixelsPerMm);
     const fillStitchGraph = this.getFillStitchGraph(rows);
     const travelGraph = this.getTravelGraph(fillStitchGraph);
@@ -254,10 +265,16 @@ export class AutoFill {
     stitchPath: IPathStep[],
     fillStitchGraph: Graph<IIntersection, { key: string }>,
     pixelsPerMm: number,
-  ) {
-    let stitches = [] as Vector[];
+  ): Stitch[] {
+    let stitches = [] as Stitch[];
     if (stitchPath[0].key !== 'segment') {
-      stitches.push(fillStitchGraph.vertices[stitchPath[0].from].position);
+      // stitches.push(fillStitchGraph.vertices[stitchPath[0].from].position);
+      stitches.push(
+        new Stitch(
+          fillStitchGraph.vertices[stitchPath[0].from].position,
+          StitchType.NORMAL,
+        ),
+      );
     }
     for (const [i, edge] of stitchPath.entries()) {
       const [from, to] = [
@@ -265,14 +282,19 @@ export class AutoFill {
         fillStitchGraph.vertices[edge.to],
       ];
       if (edge.key === 'segment') {
-        stitches = stitches.concat(this.stitchRow(from, to, pixelsPerMm));
+        stitches = stitches.concat(
+          Stitch.fromVectors(this.stitchRow(from, to, pixelsPerMm), StitchType.NORMAL),
+        );
       } else {
         stitches = stitches.concat(
-          this.findPath(
-            from.position,
-            to.position,
-            this.stitchSpacingMm * pixelsPerMm,
-            0.1 * this.stitchSpacingMm * pixelsPerMm,
+          Stitch.fromVectors(
+            this.findPath(
+              from.position,
+              to.position,
+              this.travelSpacingMm * pixelsPerMm,
+              0.1 * this.travelSpacingMm * pixelsPerMm,
+            ),
+            StitchType.TRAVEL,
           ),
         );
       }
@@ -281,27 +303,28 @@ export class AutoFill {
   }
   stitchRow(from: IIntersection, to: IIntersection, pixelsPerMm: number) {
     const rowStitches = [] as Vector[];
-    const offset = Utils.map(
-      from.rowIndex % 2,
-      0,
-      2,
-      0,
-      this.stitchSpacingMm * pixelsPerMm,
-    );
+    const offset =
+      this.stitchPatternMm[from.rowIndex % this.stitchPatternMm.length].rowOffsetMm *
+      pixelsPerMm;
+    const rowPatternMm =
+      this.stitchPatternMm[from.rowIndex % this.stitchPatternMm.length].rowPatternMm;
     const maxDist = to.rowStart.distance(to.rowEnd);
-    const spacing = this.stitchSpacingMm * pixelsPerMm;
     const minD = Math.min(from.rowDistance, to.rowDistance);
     const maxD = Math.max(from.rowDistance, to.rowDistance);
+    let patternIndex = 0;
+    let spacing = rowPatternMm[patternIndex] * pixelsPerMm;
     for (let d = offset; d < maxDist; d += spacing) {
       if (d > minD && d < maxD) {
         const lerp = to.rowStart.lerp(to.rowEnd, d / maxDist);
         if (
-          from.position.distance(lerp) >= 0.25 * this.stitchSpacingMm * pixelsPerMm &&
-          to.position.distance(lerp) >= 0.25 * this.stitchSpacingMm * pixelsPerMm
+          from.position.distance(lerp) >= 0.25 * spacing &&
+          to.position.distance(lerp) >= 0.25 * spacing
         ) {
           rowStitches.push(lerp);
         }
       }
+      patternIndex = (patternIndex + 1) % rowPatternMm.length;
+      spacing = rowPatternMm[patternIndex] * pixelsPerMm;
     }
     if (from.rowDistance > to.rowDistance) {
       rowStitches.reverse();

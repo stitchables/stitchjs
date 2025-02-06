@@ -1,0 +1,91 @@
+<!doctype html>
+<html>
+  <head>
+    <title>Pattern Fill Animation Example</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
+    <script src="../dist/stitch.global.js"></script>
+    <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
+  </head>
+  <body>
+    <script>
+
+      let [w, h] = [400, 400];
+      let shape = [Stitch.Math.Polyline.fromArrays([[10, 10], [390, 10], [390, 390], [10, 390]], true)];
+
+      let frameCount = 12;
+      let patterns = [];
+      let canvases = [];
+      for (let n = 0; n < frameCount; n++) {
+        let pattern = new Stitch.Core.Pattern(w, h);
+        let thread = pattern.addThread(255, 0, 0);
+        let fillPattern = [];
+        for (let i = 0; i < 4; i++) {
+          for (let j = 0; j < ((i === 1 || i === 3) ? 12 : 24); j++) {
+            if (i % 2 === 0) {
+              if (i === 0) {
+                fillPattern.push({
+                  rowOffsetMm: Stitch.Math.Utils.map(n, 0, frameCount, 0, 12),
+                  rowPatternMm: [3, 9]
+                });
+              } else {
+                fillPattern.push({
+                  rowOffsetMm: 6 - Stitch.Math.Utils.map(n, 0, frameCount, 0, 12),
+                  rowPatternMm: [3, 9]
+                });
+              }
+            } else {
+              fillPattern.push({ rowOffsetMm: 0, rowPatternMm: [3] });
+            }
+          }
+        }
+        thread.addRun(new Stitch.Core.Runs.PatternFill(shape, Math.PI / 4, 0.25, fillPattern, 3, shape[0].vertices[1], shape[0].vertices[3]));
+        patterns.push(pattern);
+        let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 3);
+        canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0; visibility: hidden;');
+        canvases.push(canvas);
+        document.body.append(canvas);
+      }
+
+      function animate() {
+        c++;
+        canvases[(c - 1) % frameCount].style.visibility = 'hidden';
+        canvases[c % frameCount].style.visibility = 'visible';
+        requestAnimationFrame(() => { setTimeout(animate, 120); });
+      }
+      let c = 0;
+      animate();
+
+      const [dstZip, pesZip] = [new JSZip(), new JSZip()];
+      for (let i = 0; i < frameCount; i++) {
+        const wMm = Stitch.Math.Utils.inToMm(3);
+        const hMm = Stitch.Math.Utils.inToMm(3);
+        const dstData = Stitch.IO.getData(patterns[i], wMm, hMm, `f${i}_patternFillAnimation.dst`);
+        const pesData = Stitch.IO.getData(patterns[i], wMm, hMm, `f${i}_patternFillAnimation.pes`);
+        dstZip.file(`f${i}_patternFillAnimation.dst`, dstData, { binary: true });
+        pesZip.file(`f${i}_patternFillAnimation.pes`, pesData, { binary: true });
+      }
+
+      window.addEventListener("keydown", async (e) => {
+        if (e.code === "KeyD") {
+          console.log(dstZip);
+          dstZip.generateAsync({ type: "blob" })
+                  .then((content) => {
+                    const a = document.createElement('a');
+                    a.href = window.URL.createObjectURL(content);
+                    a.download = 'patternFillAnimationDst.zip';
+                    a.click();
+                  });
+        } else if (e.code === "KeyP") {
+          pesZip.generateAsync({ type: "blob" })
+                  .then((content) => {
+                    const a = document.createElement('a');
+                    a.href = URL.createObjectURL(content);
+                    a.download = 'patternFillAnimationPes.zip';
+                    a.click();
+                  });
+        }
+      });
+
+    </script>
+  </body>
+</html>

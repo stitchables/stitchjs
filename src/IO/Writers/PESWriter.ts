@@ -1,6 +1,6 @@
-import { IResolvedStitches } from '../../Core/Pattern';
 import { IWriter } from './IWriter';
 import { Utils } from './Utils';
+import { IStitchPlan } from '../../Core/IStitchPlan';
 
 export class PESWriter implements IWriter {
   data: (number | string | Uint8Array)[];
@@ -16,10 +16,7 @@ export class PESWriter implements IWriter {
   writeInt(value: number, bytes: number, endien = 'L'): void {
     this.data.push(Utils.integerToBinary(value, bytes, endien));
   }
-  write(
-    stitchPattern: IResolvedStitches,
-    filename: string,
-  ): (number | string | Uint8Array)[] {
+  write(stitchPlan: IStitchPlan, filename: string): (number | string | Uint8Array)[] {
     this.data = [];
     this.writeString('#PES0001');
     this.writeBytes(new Uint8Array([0x16]));
@@ -33,14 +30,14 @@ export class PESWriter implements IWriter {
     this.writeBytes(new Uint8Array([0x06]));
     this.writeBytes(new Uint8Array([0x26]));
     this.writeBytes(new Uint8Array(new Array(12).fill(0x20)));
-    this.writeInt(stitchPattern.threads.length - 1, 1, 'L');
+    this.writeInt(stitchPlan.threads.length - 1, 1, 'L');
     // todo: implemenet color matching
     const colorList = [0x05, 0x38, 0x15];
-    for (let i = 0; i < stitchPattern.threads.length; i++) {
+    for (let i = 0; i < stitchPlan.threads.length; i++) {
       this.writeInt(colorList[i % 3], 1, 'L');
     }
     this.writeBytes(
-      new Uint8Array(new Array(463 - stitchPattern.threads.length).fill(0x20)),
+      new Uint8Array(new Array(463 - stitchPlan.threads.length).fill(0x20)),
     );
     this.writeBytes(new Uint8Array([0x00, 0x00]));
     const graphicsOffsetValue = new Uint8Array(3);
@@ -49,35 +46,35 @@ export class PESWriter implements IWriter {
     this.writeBytes(new Uint8Array([0xff]));
     this.writeBytes(new Uint8Array([0xf0]));
     this.writeInt(
-      2 * Math.ceil(10 * 0.5 * stitchPattern.width * stitchPattern.pixelsPerUnit),
+      2 * Math.ceil(10 * 0.5 * stitchPlan.width * stitchPlan.pixelsPerUnit),
       2,
       'L',
     );
     this.writeInt(
-      2 * Math.ceil(10 * 0.5 * stitchPattern.height * stitchPattern.pixelsPerUnit),
+      2 * Math.ceil(10 * 0.5 * stitchPlan.height * stitchPlan.pixelsPerUnit),
       2,
       'L',
     );
     this.writeBytes(new Uint8Array([0xe0, 0x01]));
     this.writeBytes(new Uint8Array([0xb0, 0x01]));
     this.writeInt(
-      0x9000 + Math.ceil(10 * 0.5 * stitchPattern.width * stitchPattern.pixelsPerUnit),
+      0x9000 + Math.ceil(10 * 0.5 * stitchPlan.width * stitchPlan.pixelsPerUnit),
       2,
       'B',
     );
     this.writeInt(
-      0x9000 + Math.ceil(10 * 0.5 * stitchPattern.height * stitchPattern.pixelsPerUnit),
+      0x9000 + Math.ceil(10 * 0.5 * stitchPlan.height * stitchPlan.pixelsPerUnit),
       2,
       'B',
     );
-    const stitchEncodingByteCount = this.encodeStitches(stitchPattern);
+    const stitchEncodingByteCount = this.encodeStitches(stitchPlan);
     const graphicsOffsetBytes = Utils.integerToBinary(
       20 + stitchEncodingByteCount,
       3,
       'L',
     );
     for (let i = 0; i < 3; i++) graphicsOffsetValue[i] = graphicsOffsetBytes[i];
-    for (let i = 0; i < stitchPattern.threads.length + 1; i++) this.writePECGraphics();
+    for (let i = 0; i < stitchPlan.threads.length + 1; i++) this.writePECGraphics();
     return this.data;
   }
   encodeCommand(command: string, dx: number, dy: number): number {
@@ -109,16 +106,16 @@ export class PESWriter implements IWriter {
         return 1;
     }
   }
-  encodeStitches(stitchPattern: IResolvedStitches): number {
+  encodeStitches(stitchPlan: IStitchPlan): number {
     let byteCounter = 0;
     let [xx, yy] = [0, 0];
-    for (let i = 0; i < stitchPattern.threads.length; i++) {
+    for (let i = 0; i < stitchPlan.threads.length; i++) {
       if (i > 0) byteCounter += this.encodeCommand('COLOR_CHANGE', i - 1, 0);
-      for (let j = 0; j < stitchPattern.threads[i].runs.length; j++) {
-        for (let k = 0; k < stitchPattern.threads[i].runs[j].length; k++) {
-          const stitch = stitchPattern.threads[i].runs[j][k];
-          let dx = Math.round(10 * stitch.x - xx);
-          let dy = Math.round(10 * stitch.y - yy);
+      for (let j = 0; j < stitchPlan.threads[i].runs.length; j++) {
+        for (let k = 0; k < stitchPlan.threads[i].runs[j].length; k++) {
+          const stitch = stitchPlan.threads[i].runs[j][k];
+          let dx = Math.round(10 * stitch.position.x - xx);
+          let dy = Math.round(10 * stitch.position.y - yy);
           xx += dx;
           yy += dy;
           if (k === 0) {
