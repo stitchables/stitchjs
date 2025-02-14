@@ -2,9 +2,9 @@ import { Pattern } from '../Core/Pattern';
 import { Vector } from '../Math/Vector';
 
 function rgbToHex(r: number, g: number, b: number): string {
-  const rHex = r.toString(16).padStart(2, '0');
-  const gHex = g.toString(16).padStart(2, '0');
-  const bHex = b.toString(16).padStart(2, '0');
+  const rHex = Math.round(r).toString(16).padStart(2, '0');
+  const gHex = Math.round(g).toString(16).padStart(2, '0');
+  const bHex = Math.round(b).toString(16).padStart(2, '0');
   return `#${rHex}${gHex}${bHex}`;
 }
 function shadeColor(color: string, percent: number): string {

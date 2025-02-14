@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <title>SVG To Embroidery</title>
+    <link rel="stylesheet" media="(prefers-color-scheme:light)" href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.0/cdn/themes/light.css" />
+    <link rel="stylesheet" media="(prefers-color-scheme:dark)"  href="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.0/cdn/themes/dark.css" onload="document.documentElement.classList.add('sl-theme-dark');"/>
+    <script type="module" src="https://cdn.jsdelivr.net/npm/@shoelace-style/shoelace@2.20.0/cdn/shoelace-autoloader.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/path-that-svg@1.2.4/dist/pathThatSvg.umd.min.js"></script>
+    <script src="../dist/stitch.global.js"></script>
+    <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
+    <link rel="stylesheet" href="style.css">
+  </head>
+
+  <body>
+    <sl-drawer id="options-drawer" label="Options" placement="top" no-header>
+      <div id="options-container">
+        <div class="option-container">
+          <div class="option-label">Max Join Distance</div>
+          <sl-range class="option-input" id="max-join-dist-slider" min="0" max="50" value="10" step="0.1" tooltip="none"></sl-range>
+          <div class="option-value">
+            <span id="max-join-dist-value">10.0</span> <span class="units">mm</span>
+          </div>
+        </div>
+        <div class="option-container">
+          <div class="option-label">Minimum Run Length</div>
+          <sl-range class="option-input" id="min-run-length-slider" min="0" max="50" value="10" step="0.1" tooltip="none"></sl-range>
+          <div class="option-value">
+            <span id="min-run-length-value">10.0</span> <span class="units">mm</span>
+          </div>
+        </div>
+        <div class="option-container">
+          <div class="option-label">Maximum Stitch Density</div>
+          <sl-range class="option-input" id="max-density-slider" min="0" max="20" value="0" step="1" tooltip="none"></sl-range>
+          <div class="option-value">
+            <span id="max-density-value">0</span>
+          </div>
+        </div>
+        <div class="option-container">
+          <div class="option-label">Stitch Length</div>
+          <sl-range class="option-input" id="stitch-length-slider" min="0" max="25" value="3" step="0.1" tooltip="none"></sl-range>
+          <div class="option-value">
+            <span id="stitch-length-value">3.0</span> <span class="units">mm</span>
+          </div>
+        </div>
+        <div class="option-container" style="display: none">
+          <div class="option-label">Minimum Stitch Length</div>
+          <sl-range class="option-input" id="min-stitch-length-slider" min="0" max="25" value="3" step="0.1" tooltip="none"></sl-range>
+          <div class="option-value">
+            <span id="min-stitch-length-value">3.0</span> <span class="units">mm</span>
+          </div>
+        </div>
+        <div class="option-container" style="display: none">
+          <div class="option-label">Maximum Stitch Length</div>
+          <sl-range class="option-input" id="max-stitch-length-slider" min="0" max="25" value="3" step="0.1" tooltip="none"></sl-range>
+          <div class="option-value">
+            <span id="max-stitch-length-value">3.0</span> <span class="units">mm</span>
+          </div>
+        </div>
+        <div class="option-container">
+          <div class="option-label">Output Width (<span class="units">mm</span>)</div>
+          <sl-input class="option-input" id="width-input" type="number" placeholder="0.0"></sl-input>
+          <div class="option-value"></div>
+        </div>
+        <div class="option-container">
+          <div class="option-label">Output Height (<span class="units">mm</span>)</div>
+          <sl-input class="option-input" id="height-input" type="number" placeholder="0.0"></sl-input>
+          <div class="option-value"></div>
+        </div>
+        <div class="option-container" style="justify-content: space-around;">
+          <sl-switch id="random-stitch-length-switch">Randomize Stitch Length</sl-switch>
+          <sl-switch id="density-overlay-switch">Show Density Overlay</sl-switch>
+          <sl-switch id="use-svg-colors-switch">Use SVG Colors</sl-switch>
+          <sl-switch id="units-switch">Millimeters/Inches</sl-switch>
+        </div>
+        <div class="option-container" style="padding-top: 10px;">
+          <div class="option-container" style="flex-direction: column;">
+            <div style="padding-bottom: 5px">Background Color</div>
+            <sl-color-picker id="bg-color-picker" value="#000000" label="Background Color"></sl-color-picker>
+          </div>
+          <div class="option-container" style="flex-direction: column;">
+            <div style="padding-bottom: 5px">Thread Color</div>
+            <sl-color-picker id="thread-color-picker" value="#ffffff" label="Thread Color"></sl-color-picker>
+          </div>
+        </div>
+      </div>
+      <sl-button slot="footer" variant="primary">Close</sl-button>
+    </sl-drawer>
+    <sl-button id="options-button">Options</sl-button>
+    <div id="drop-message">
+      <p>Drag/Drop SVG File Here</p>
+    </div>
+    <div id="original-svg-container" style="display: none"></div>
+    <div id="path-counts">
+      <div>Original Path Count: <span id="original-path-count">0</span></div>
+      <div>Output Path Count: <span id="output-path-count">0</span></div>
+      <div>Press 'D' to download .dst</div>
+      <div>Press 'P' to download .pes</div>
+    </div>
+    <script type="module" src="script.js"></script>
+  </body>
+</html>

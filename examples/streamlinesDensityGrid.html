@@ -184,13 +184,16 @@
         }
     }
 
+
+    let rng = new Stitch.Math.Random();
+    let [ox, oy, oz, ow] = [rng.random_num(-1000, 1000), rng.random_num(-1000, 1000), rng.random_num(-1000, 1000), rng.random_num(-1000, 1000)];
     let [w, h] = [1000, 1000];
 
     let scn = function(px, py, sx, sy, omi, oma) {
-        let x = 0.25 * (px + 10000) / sx;
-        let y = 0.25 * (py + 10000) / sy;
-        let z = 0.2 * Math.cos(2 * Math.PI) + 100;
-        let w = 0.2 * Math.sin(2 * Math.PI) + 100;
+        let x = 0.25 * (px + 10000) / sx + ox;
+        let y = 0.25 * (py + 10000) / sy + oy;
+        let z = 0.2 * Math.cos(2 * Math.PI) + 100 + oz;
+        let w = 0.2 * Math.sin(2 * Math.PI) + 100 + ow;
         return Stitch.Math.Utils.map(Stitch.Math.noise(x, y, z, w), 0, 1, omi, oma);
     }
     let vf = function(p) {
@@ -210,22 +213,63 @@
     }
     let sld = ess.getSl();
 
+    let densityGrid = new Stitch.Math.DensityGrid(w, h, 2);
+    let polylines = [];
+    for (const sl of sld) {
+        let splitPolylines = [];
+        let currPolyline = new Stitch.Math.Polyline(false);
+        for (let i = 1; i < sl.length; i++) {
+            let currStitch = new Stitch.Math.Vector(sl[i].x, sl[i].y);
+            let prevStitch = new Stitch.Math.Vector(sl[i - 1].x, sl[i - 1].y);
+            if (densityGrid.addDensityXW(prevStitch, currStitch, 10)) {
+                if (currPolyline.vertices.length === 0) {
+                    currPolyline.addVertex(prevStitch.x, prevStitch.y);
+                }
+                currPolyline.addVertex(currStitch.x, currStitch.y);
+            } else {
+                if (currPolyline.vertices.length > 0) {
+                    splitPolylines.push(currPolyline);
+                    currPolyline = new Stitch.Math.Polyline(false);
+                }
+            }
+        }
+        if (currPolyline.vertices.length > 0) {
+            splitPolylines.push(currPolyline);
+        }
+        polylines.push(...splitPolylines);
+    }
+    const joinedPolylines = Stitch.Optimize.joinPolylines(polylines, 50);
+    console.log(`Output Run Count: ${joinedPolylines.length}`);
+
+    class RandomLengthRun {
+        constructor(polyline, minStitchLengthMm, maxStitchLengthMm) {
+            this.polyline = polyline;
+            this.minStitchLengthMm = minStitchLengthMm;
+            this.maxStitchLengthMm = maxStitchLengthMm;
+            this.rng = new Stitch.Math.Random();
+        }
+        getStitches(pixelsPerMm) {
+            const resampled = this.polyline.getRandomRadialDistanceResampled(
+                this.minStitchLengthMm * pixelsPerMm,
+                this.maxStitchLengthMm * pixelsPerMm,
+                this.rng
+            ).vertices;
+            if (this.polyline.isClosed) return Stitch.Core.Stitch.fromVectors([...resampled, resampled[0]]);
+            return Stitch.Core.Stitch.fromVectors(resampled);
+        }
+    }
+
     let pattern = new Stitch.Core.Pattern(w, h);
     let thread = pattern.addThread(0, 0, 0);
-    for (let sl of sld) {
-        let polyline = new Stitch.Math.Polyline(false);
-        for (let p of sl) {
-        	polyline.addVertex(p.x, p.y);
-        }
-        thread.addRun(new Stitch.Core.Runs.Run(polyline, 1.5));
+    for (let joinedPolyline of joinedPolylines) {
+        thread.addRun(new RandomLengthRun(joinedPolyline, 1.5, 4));
     }
 
     let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
     canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
     document.body.append(canvas);
 
-    console.log(window.innerWidth)
-    let stitchDensityCanvas = Stitch.Graphics.getStitchDensityCanvas(pattern, window.innerWidth, window.innerHeight, 127, 127, 0.25, 3, 10, [255, 0, 0]);
+    let stitchDensityCanvas = Stitch.Graphics.getStitchDensityCanvas(pattern, window.innerWidth, window.innerHeight, 127, 127, 0.25, 5, 10, [255, 0, 0]);
     stitchDensityCanvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
     document.body.append(stitchDensityCanvas);
 

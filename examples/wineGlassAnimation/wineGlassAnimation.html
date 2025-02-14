@@ -2,6 +2,7 @@
 <html>
   <head>
     <title>Wine Glass Animation Example</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
     <script src="../../dist/stitch.global.js"></script>
     <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
     <script src="./ln.global.js"></script>
@@ -138,26 +139,35 @@
           stitchFrames.push({ pattern, svg });
         }
 
-        window.addEventListener("keydown", (e) => {
-          if (e.code === "Digit1") {
-            for (let i = 0; i < 10; i++) {
-              Stitch.IO.write(
-                stitchFrames[i].pattern,
-                      Stitch.Math.Utils.inToMm(widthIn),
-                      Stitch.Math.Utils.inToMm(heightIn),
-                `wineAnim-${i.toString().padStart(2, '0')}.dst`,
-              );
-            }
-          }
-          if (e.code === "Digit2") {
-            for (let i = 10; i < 20; i++) {
-              Stitch.IO.write(
-                stitchFrames[i].pattern,
-                      Stitch.Math.Utils.inToMm(widthIn),
-                      Stitch.Math.Utils.inToMm(heightIn),
-                `wineAnim-${i.toString().padStart(2, '0')}.dst`,
-              );
-            }
+
+        const [dstZip, pesZip] = [new JSZip(), new JSZip()];
+        for (let i = 0; i < stitchFrames.length; i++) {
+          const wMm = Stitch.Math.Utils.inToMm(widthIn);
+          const hMm = Stitch.Math.Utils.inToMm(heightIn);
+          const dstData = Stitch.IO.getData(stitchFrames[i].pattern, wMm, hMm, `${i}-wineGlassAnimation.dst`);
+          const pesData = Stitch.IO.getData(stitchFrames[i].pattern, wMm, hMm, `${i}-wineGlassAnimation.pes`);
+          dstZip.file(`${i}-wineGlassAnimation.dst`, dstData, { binary: true });
+          pesZip.file(`${i}-wineGlassAnimation.pes`, pesData, { binary: true });
+        }
+
+        window.addEventListener("keydown", async (e) => {
+          if (e.code === "KeyD") {
+            console.log(dstZip);
+            dstZip.generateAsync({ type: "blob" })
+                    .then((content) => {
+                      const a = document.createElement('a');
+                      a.href = window.URL.createObjectURL(content);
+                      a.download = 'wineGlassAnimationDst.zip';
+                      a.click();
+                    });
+          } else if (e.code === "KeyP") {
+            pesZip.generateAsync({ type: "blob" })
+                    .then((content) => {
+                      const a = document.createElement('a');
+                      a.href = URL.createObjectURL(content);
+                      a.download = 'wineGlassAnimationPes.zip';
+                      a.click();
+                    });
           }
         });
 
