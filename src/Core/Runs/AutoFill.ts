@@ -13,11 +13,7 @@ import {
   Point,
   Envelope,
 } from 'jsts/org/locationtech/jts/geom';
-import {
-  Centroid,
-  MinimumBoundingCircle,
-  ConvexHull,
-} from 'jsts/org/locationtech/jts/algorithm';
+import { MinimumBoundingCircle } from 'jsts/org/locationtech/jts/algorithm';
 import { OverlayOp } from 'jsts/org/locationtech/jts/operation/overlay';
 import { DistanceOp } from 'jsts/org/locationtech/jts/operation/distance';
 import { LengthIndexedLine } from 'jsts/org/locationtech/jts/linearref';
@@ -28,14 +24,19 @@ import IndexedFacetDistance from 'jsts/org/locationtech/jts/operation/distance/I
 
 import * as graphlib from 'graphlib';
 import { Stitch } from '../Stitch';
-import { geometryFactory } from '../../index';
+import { geometryFactory } from '../../util/jsts';
+import { Utils } from '../../Math/Utils';
 
 export class AutoFill implements IRun {
   shell: Polyline;
   holes: Polyline[];
   angle: number;
   rowSpacingMm: number;
-  fillStitchLengthMm: number;
+  // fillStitchLengthMm: number;
+  fillPattern: {
+    rowOffsetMm: number;
+    rowPatternMm: number[];
+  }[] = [];
   travelStitchLengthMm: number;
   startPosition: Vector;
   endPosition: Vector;
@@ -57,7 +58,10 @@ export class AutoFill implements IRun {
     holes: Polyline[],
     angle: number,
     rowSpacingMm: number,
-    fillStitchLengthMm: number,
+    fillPattern: {
+      rowOffsetMm: number;
+      rowPatternMm: number[];
+    }[],
     travelStitchLengthMm: number,
     startPosition: Vector,
     endPosition: Vector,
@@ -68,7 +72,7 @@ export class AutoFill implements IRun {
     this.holes = holes;
     this.angle = angle;
     this.rowSpacingMm = rowSpacingMm;
-    this.fillStitchLengthMm = fillStitchLengthMm;
+    this.fillPattern = fillPattern;
     this.travelStitchLengthMm = travelStitchLengthMm;
     this.startPosition = startPosition;
     this.endPosition = endPosition;
@@ -119,7 +123,7 @@ export class AutoFill implements IRun {
     const fillSegments = LineStringExtracter.getGeometry(
       OverlayOp.intersection(this.polygon, fillRows),
     );
-    // console.log(fillSegments);
+    console.log(fillSegments);
     const fillStitchGraph = this.buildFillStitchGraph(fillSegments);
     // console.log(fillStitchGraph);
     const travelGraph = this.buildTravelGraph(fillStitchGraph, pixelsPerMm);
@@ -127,7 +131,9 @@ export class AutoFill implements IRun {
     const path = this.findStitchPath(fillStitchGraph, travelGraph);
     // console.log(path);
     // console.log(this.pathToStitches(path, travelGraph, fillStitchGraph));
-    return this.pathToStitches(path, travelGraph, fillStitchGraph).map(c => new Stitch(new Vector(c.x, c.y)));
+    return this.pathToStitches(path, travelGraph, fillStitchGraph, pixelsPerMm).map(
+      (c) => new Stitch(new Vector(c.x, c.y)),
+    );
   }
 
   getRows(center: Vector, angle: number, radius: number, spacing: number, label = '') {
@@ -491,8 +497,8 @@ export class AutoFill implements IRun {
       // }
       for (const e of fillStitchGraph.edges().map((e) => [e, fillStitchGraph.edge(e)])) {
         if (e[1].type === 'segment') {
-          const p = e[1].geometry.getCoordinate(0);
-          const q = e[1].geometry.getCoordinate(1);
+          const p = e[1].geometry.p0.getCoordinate();
+          const q = e[1].geometry.p1.getCoordinate();
           strTree.insert(new Envelope(p, q), e);
         }
       }
@@ -520,8 +526,17 @@ export class AutoFill implements IRun {
             { type: 'travel', geometry: ls, weight: length / (dToShape + 0.1) },
             'travel',
           );
-          for (const [k, v] of strTree.query(new Envelope(p, q))) {
-            if (v.geometry.intersection(ls)) {
+          for (const [k, v] of strTree.query(
+            new Envelope(p.getCoordinate(), q.getCoordinate()),
+          )) {
+            const p1 = new Vector(v.geometry.p0.getX(), v.geometry.p0.getY());
+            const p2 = new Vector(v.geometry.p1.getX(), v.geometry.p1.getY());
+            const q1 = new Vector(ls.p0.getX(), ls.p0.getY());
+            const q2 = new Vector(ls.p1.getX(), ls.p1.getY());
+            if (
+              // v.geometry.lineIntersection(ls) // not sure why this isn't working?
+              Utils.lineSegmentIntersection(p1, p2, q1, q2)
+            ) {
               fillStitchGraph.edge(k).underpathEdges.push([p, q, 'travel']);
             }
           }
@@ -706,6 +721,7 @@ export class AutoFill implements IRun {
     path: [string, string, string | null][],
     travelGraph: graphlib.Graph,
     fillStitchGraph: graphlib.Graph,
+    pixelsPerMm: number,
   ): Coordinate[] {
     const collapsedPath = [];
     let runStart = null;
@@ -742,8 +758,108 @@ export class AutoFill implements IRun {
     for (let i = 0, n = collapsedPath.length; i < n; i++) {
       const edge = collapsedPath[i];
       if (edge[2] === 'segment') {
-        stitches.push(fillStitchGraph.node(edge[0]).geometry.getCoordinate());
-        stitches.push(fillStitchGraph.node(edge[1]).geometry.getCoordinate());
+        const rowStart = new Vector(
+          fillStitchGraph.node(edge[0]).geometry.getCoordinate().x,
+          fillStitchGraph.node(edge[0]).geometry.getCoordinate().y,
+        );
+        const rowEnd = new Vector(
+          fillStitchGraph.node(edge[1]).geometry.getCoordinate().x,
+          fillStitchGraph.node(edge[1]).geometry.getCoordinate().y,
+        );
+
+        const rowDirection = rowEnd.subtract(rowStart).normalized();
+        const rowLength = rowEnd.distance(rowStart);
+
+        const rowStartBasis = changeOfBasis2D(
+          rowStart.subtract(this.centerPosition),
+          Vector.fromAngle(this.angle),
+          Vector.fromAngle(this.angle + 0.5 * Math.PI),
+        );
+        const rowEndBasis = changeOfBasis2D(
+          rowEnd.subtract(this.centerPosition),
+          Vector.fromAngle(this.angle),
+          Vector.fromAngle(this.angle + 0.5 * Math.PI),
+        );
+
+        const rowIndex = Math.round(rowStartBasis.y / (this.rowSpacingMm * pixelsPerMm));
+        const patternIndex =
+          ((rowIndex % this.fillPattern.length) + this.fillPattern.length) %
+          this.fillPattern.length;
+        const rowPatternSegments = this.fillPattern[patternIndex].rowPatternMm.length;
+
+        const rowStitches = [];
+
+        const minRowBasis = Math.min(rowStartBasis.x, rowEndBasis.x);
+        const maxRowBasis = Math.max(rowStartBasis.x, rowEndBasis.x);
+
+        let negRowPosition = this.fillPattern[patternIndex].rowOffsetMm * pixelsPerMm;
+        let posRowPosition = this.fillPattern[patternIndex].rowOffsetMm * pixelsPerMm;
+        if (minRowBasis < negRowPosition && maxRowBasis > posRowPosition) {
+          rowStitches.push(negRowPosition);
+        }
+        let negRowPatternIndex = -1;
+        let posRowPatternIndex = 0;
+        while (
+          negRowPosition > -this.boundingRadius &&
+          posRowPosition < this.boundingRadius
+        ) {
+          negRowPatternIndex =
+            ((negRowPatternIndex % rowPatternSegments) + rowPatternSegments) %
+            rowPatternSegments;
+          negRowPosition -=
+            this.fillPattern[patternIndex].rowPatternMm[negRowPatternIndex] * pixelsPerMm;
+          posRowPosition +=
+            this.fillPattern[patternIndex].rowPatternMm[posRowPatternIndex] * pixelsPerMm;
+          if (negRowPosition > minRowBasis && negRowPosition < maxRowBasis) {
+            rowStitches.unshift(negRowPosition);
+          }
+          if (posRowPosition > minRowBasis && posRowPosition < maxRowBasis) {
+            rowStitches.push(posRowPosition);
+          }
+          negRowPatternIndex--;
+          posRowPatternIndex = (posRowPatternIndex + 1) % rowPatternSegments;
+        }
+        rowStitches.unshift(minRowBasis);
+        rowStitches.push(maxRowBasis);
+        // console.log(rowStitches);
+
+        // stitches.push(new Coordinate(rowStart.x, rowStart.y));
+        if (rowStartBasis.x > rowEndBasis.x) {
+          for (let i = rowStitches.length - 1; i >= 0; i--) {
+            const l = rowStart.lerp(rowEnd, Utils.map(rowStitches[i], rowStartBasis.x, rowEndBasis.x, 0, 1));
+            if (rowStart.distance(l) > pixelsPerMm) {
+              stitches.push(new Coordinate(l.x, l.y));
+            }
+          }
+        } else {
+          for (let i = 0; i < rowStitches.length; i++) {
+            const l = rowStart.lerp(rowEnd, Utils.map(rowStitches[i], rowStartBasis.x, rowEndBasis.x, 0, 1));
+            if (rowStart.distance(l) > pixelsPerMm) {
+              stitches.push(new Coordinate(l.x, l.y));
+            }
+          }
+        }
+        // stitches.push(new Coordinate(rowEnd.x, rowEnd.y));
+
+        // stitches.push(new Coordinate(rowStart.x, rowStart.y));
+        // let offset = this.fillPattern[patternIndex].rowOffsetMm * pixelsPerMm;
+        // while (offset < rowLength) {
+        //   stitches.push(
+        //     new Coordinate(
+        //       rowStart.x + offset * rowDirection.x,
+        //       rowStart.y + offset * rowDirection.y,
+        //     ),
+        //   );
+        //   offset += this.fillPattern[patternIndex].rowPatternMm[0] * pixelsPerMm;
+        // }
+
+        // stitches.push();
+        // stitches.push();
+
+        // travel_graph.remove_edges_from(
+        //   fill_stitch_graph[edge[0]][edge[1]]['segment'].get('underpath_edges', [])
+        // )
+
         // stitches.push(edge[0], edge[1]);
         if (fillStitchGraph.hasEdge(edge[0], edge[1])) {
           const edgeLabel = fillStitchGraph.edge(edge[0], edge[1]);
@@ -898,4 +1014,27 @@ class MinPriorityQueue {
       idx = smallest;
     }
   }
+}
+
+function changeOfBasis2D(v: Vector, b1: Vector, b2: Vector): Vector {
+  const [x, y] = [v.x, v.y];
+  const [b1x, b1y] = [b1.x, b1.y];
+  const [b2x, b2y] = [b2.x, b2.y];
+
+  // Construct inverse of the change-of-basis matrix B = [b1 b2]
+  const det = b1x * b2y - b1y * b2x;
+  if (Math.abs(det) < 1e-10) {
+    throw new Error('Basis vectors are linearly dependent (determinant is zero)');
+  }
+
+  const invB = [
+    [b2y / det, -b1y / det],
+    [-b2x / det, b1x / det],
+  ];
+
+  // Multiply invB * v
+  const newX = invB[0][0] * x + invB[0][1] * y;
+  const newY = invB[1][0] * x + invB[1][1] * y;
+
+  return new Vector(newX, newY);
 }

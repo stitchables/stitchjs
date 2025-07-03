@@ -21,27 +21,31 @@
     [199, 293], [189, 246], [172, 235], [152, 245], [139, 261], [138, 283], [146, 277],
     [159, 257], [174, 256], [174, 274], [177, 302], [177, 336], [158, 358], [121, 366],
     [102, 356]
-  ]).getRounded(10).getSimplified(1);
+  ]).getRounded(10);
   const holes = [
     [[142, 324], [142, 296], [121, 297], [108, 315], [125, 338], [142, 324]],
     [[206, 139], [194, 150], [203, 166], [217, 146], [206, 139]],
     [[234, 309], [234, 326], [260, 326], [286, 295], [286, 264], [254, 279], [234, 309]]
-  ].map(p => Stitch.Math.Polyline.fromArrays(p).getRounded(10).getSimplified(1));
+  ].map(p => Stitch.Math.Polyline.fromArrays(p).getRounded(10));
   const angle = 0;
-  const rowSpacing = 0.2;
-  const fillStitchLength = 4;
+  const rowSpacing = 0.25;
+  const fillPattern = [
+    { rowOffsetMm: 0 * 4 / 3, rowPatternMm: [4] },
+    { rowOffsetMm: 1 * 4 / 3, rowPatternMm: [4] },
+    { rowOffsetMm: 2 * 4 / 3, rowPatternMm: [4] },
+  ];
   const travelStitchLength = 4;
   const startPos = new Stitch.Math.Vector(102, 356);
   const endPos = new Stitch.Math.Vector(312, 211);
-  // const fillCenter = new Stitch.Math.Vector(200, 200);
-  const fillCenter = undefined;
+  const fillCenter = new Stitch.Math.Vector(200, 200);
+  // const fillCenter = undefined;
 
   const autoFill = new Stitch.Core.Runs.AutoFill(
     shell,
     holes,
     angle,
     rowSpacing,
-    fillStitchLength,
+    fillPattern,
     travelStitchLength,
     startPos,
     endPos,
@@ -52,50 +56,63 @@
 
   const startTime = performance.now();
   let stitches = autoFill.getStitches(1.8);
+  // let stitches = autoFill.getStitches(2.8);
   const endTime = performance.now();
   document.body.appendChild(document.createElement("p")).textContent = `Execution time: ${((endTime - startTime) / 1000).toFixed(2)} seconds`;
-  let polyline = Stitch.Math.Polyline.fromVectors(stitches.map(s => s.position), false).getRadialDistanceResampled(1.8 * fillStitchLength);
-  document.body.appendChild(document.createElement("p")).textContent = `Stitch count: ~${polyline.vertices.length.toLocaleString()}`;
+  document.body.appendChild(document.createElement("p")).textContent = `Stitch count: ~${stitches.length.toLocaleString()}`;
 
   console.log(stitches)
+  let convertCoordinateX, convertCoordinateY;
   function setup() {
     createCanvas(1000, 1000);
+    convertCoordinateX = function(x) {
+      return (x - 0.5 * pattern.widthPx) * width / pattern.widthPx + 0.5 * width
+    }
+    convertCoordinateY = function(y) {
+      return (y - 0.5 * pattern.heightPx) * height / pattern.heightPx + 0.5 * height
+    }
   }
 
   function draw() {
     background(220);
+
     stroke(0, 150);
     noFill();
-    let count = map(mouseX, 0.1 * width, 0.9 * width, 0, polyline.vertices.length, true);
+    let count = map(mouseX, 0.1 * width, 0.9 * width, 0, stitches.length, true);
     beginShape();
     for (let i = 0; i < count; i++) {
-      vertex(
-        (polyline.vertices[i].x - 0.5 * pattern.widthPx) * width / pattern.widthPx + 0.5 * width,
-        (polyline.vertices[i].y - 0.5 * pattern.heightPx) * height / pattern.heightPx + 0.5 * height
-      );
+      vertex(convertCoordinateX(stitches[i].position.x), convertCoordinateY(stitches[i].position.y));
     }
     endShape();
+
+    noStroke();
+    fill(0, 255, 0);
+    circle(convertCoordinateX(startPos.x), convertCoordinateY(startPos.y), 10);
+    fill(255, 0, 0);
+    circle(convertCoordinateX(endPos.x), convertCoordinateY(endPos.y), 10);
+    fill(0, 0, 0);
+    circle(convertCoordinateX(fillCenter.x), convertCoordinateY(fillCenter.y), 2);
   }
 
-  // let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
-  // canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
-  // document.body.append(canvas);
-  //
-  // let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'patternFill', 10, 500);
-  // document.body.appendChild(modal.container);
-  // window.addEventListener('click', (e) => {
-  //   if (e.target === modal.container) modal.close();
-  // });
-  // window.addEventListener('keydown', (e) => {
-  //   if (e.code === 'KeyD') modal.open();
-  // });
-  //
-  // window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
-  //   canvas.remove();
-  //   canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
-  //   canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
-  //   document.body.append(canvas);
-  // }, 10));
+  let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
+  canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+  document.body.append(canvas);
+
+  let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'patternFill', 10, 500);
+  document.body.appendChild(modal.container);
+  window.addEventListener('click', (e) => {
+    if (e.target === modal.container) modal.close();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyD') modal.open();
+  });
+
+  window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
+    canvas.remove();
+    canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
+    canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+    document.body.append(canvas);
+  }, 10));
 </script>
 </body>
 </html>
