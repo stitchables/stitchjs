@@ -31,6 +31,7 @@ export function getCanvas(
   widthPx: number,
   heightPx: number,
   pixelMultiplier: number,
+  lineWidth = 1.5,
 ): HTMLCanvasElement {
   const stitchPlan = pattern.getStitchPlan(widthPx, heightPx, pixelMultiplier);
   const scale = pixelMultiplier / stitchPlan.pixelsPerUnit;
@@ -44,7 +45,7 @@ export function getCanvas(
   if (!context) {
     return canvas;
   }
-  [context.lineWidth, context.lineJoin] = [3, 'round'];
+  [context.lineWidth, context.lineJoin] = [lineWidth, 'round'];
   for (const t of stitchPlan.threads) {
     const hexColor = rgbToHex(t.thread.red, t.thread.green, t.thread.blue);
     const endColor = shadeColor(hexColor, -60);

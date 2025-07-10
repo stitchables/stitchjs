@@ -11,6 +11,7 @@
   let pattern = new Stitch.Core.Pattern(400, 400);
   let thread = pattern.addThread(200, 0, 0);
 
+  // test shape
   const shell = Stitch.Math.Polyline.fromArrays([
     [102, 356], [24, 251], [32, 179], [84, 250], [58, 145], [80, 108], [127, 46],
     [127, 102], [102, 140], [116, 164], [135, 188], [171, 151], [193, 106], [201, 73],
@@ -27,6 +28,15 @@
     [[206, 139], [194, 150], [203, 166], [217, 146], [206, 139]],
     [[234, 309], [234, 326], [260, 326], [286, 295], [286, 264], [254, 279], [234, 309]]
   ].map(p => Stitch.Math.Polyline.fromArrays(p).getRounded(10));
+
+  // small shape
+  // const shell = Stitch.Math.Polyline.fromArrays([[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]);
+  // const holes = [];
+
+  // very small shape
+  // const shell = Stitch.Math.Polyline.fromArrays([[0, 0], [0.1, 0], [0.1, 0.1], [0, 0.1], [0, 0]]);
+  // const holes = [];
+
   const angle = 0;
   const rowSpacing = 0.25;
   const fillPattern = [
@@ -94,7 +104,7 @@
     circle(convertCoordinateX(fillCenter.x), convertCoordinateY(fillCenter.y), 2);
   }
 
-  let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
+  let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5, 1.5);
   canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
   document.body.append(canvas);
 

@@ -32,7 +32,6 @@ export class AutoFill implements IRun {
   holes: Polyline[];
   angle: number;
   rowSpacingMm: number;
-  // fillStitchLengthMm: number;
   fillPattern: {
     rowOffsetMm: number;
     rowPatternMm: number[];
@@ -44,7 +43,6 @@ export class AutoFill implements IRun {
   underpath?: boolean;
 
   geometryFactory: GeometryFactory;
-  // rings: LinearRing[];
   polygon: Polygon;
   boundary: Geometry;
   boundingRadius: number;
@@ -78,7 +76,6 @@ export class AutoFill implements IRun {
     this.endPosition = endPosition;
     this.underpath = underpath;
 
-    // this.geometryFactory = new GeometryFactory();
     this.geometryFactory = geometryFactory;
     const shellRing = this.geometryFactory.createLinearRing(
       this.shell.vertices.map((v) => new Coordinate(v.x, v.y)),
@@ -119,18 +116,15 @@ export class AutoFill implements IRun {
       pixelsPerMm * this.rowSpacingMm,
       'fill',
     );
-    // console.log(fillRows);
-    const fillSegments = LineStringExtracter.getGeometry(
-      OverlayOp.intersection(this.polygon, fillRows),
-    );
-    console.log(fillSegments);
+    const fillRowsIntersection = OverlayOp.intersection(this.polygon, fillRows);
+    if (fillRowsIntersection.isEmpty()) {
+      console.log('small shape - did not intersect with the grating');
+      return [];
+    }
+    const fillSegments = LineStringExtracter.getGeometry(fillRowsIntersection);
     const fillStitchGraph = this.buildFillStitchGraph(fillSegments);
-    // console.log(fillStitchGraph);
     const travelGraph = this.buildTravelGraph(fillStitchGraph, pixelsPerMm);
-    // console.log(travelGraph);
     const path = this.findStitchPath(fillStitchGraph, travelGraph);
-    // console.log(path);
-    // console.log(this.pathToStitches(path, travelGraph, fillStitchGraph));
     return this.pathToStitches(path, travelGraph, fillStitchGraph, pixelsPerMm).map(
       (c) => new Stitch(new Vector(c.x, c.y)),
     );
@@ -308,7 +302,6 @@ export class AutoFill implements IRun {
         .nodes()
         .map((n) => [n, g.node(n)])
         .sort((a, b) => a[1].length - b[1].length);
-      // const nodes = this.filterGraphNodes(g, (node, label) => label.shapeIndex === i).map(n => n.label).sort((a, b) => a.length - b.length);
       let n1 = nodes[0],
         n2 = null;
       for (let j = 1, m = nodes.length; j < m + 1; j++) {
@@ -396,14 +389,16 @@ export class AutoFill implements IRun {
       const snappedVerticalEdges = LineStringExtracter.getGeometry(
         snapper.snapTo(diagonalEdges, 0.005),
       );
-      travelEdges = LineStringExtracter.getGeometry(
+      travelEdges = LineStringExtracter.getLines(
         this.geometryFactory.createGeometryCollection([
           diagonalEdges,
           snappedVerticalEdges,
         ]),
-      );
+      )
+        .toArray()
+        .filter((ls: LineString) => !ls.isEmpty());
 
-      if (endpoints.getNumGeometries() === 0) {
+      if (endpoints.getNumGeometries() === 0 || travelEdges.length === 0) {
         grating = false;
       } else {
         // tag nodes with outline and projection
@@ -488,13 +483,6 @@ export class AutoFill implements IRun {
 
     if (this.underpath && grating) {
       const strTree = new STRtree(4);
-      // for (const e of Object.entries(fillStitchGraph._edgeLabels)) {
-      //   if (e[1].type === "segment") {
-      //     const p = e[1].geometry.getCoordinate(0);
-      //     const q = e[1].geometry.getCoordinate(1);
-      //     strTree.insert(new jsts.geom.Envelope(p, q), e);
-      //   }
-      // }
       for (const e of fillStitchGraph.edges().map((e) => [e, fillStitchGraph.edge(e)])) {
         if (e[1].type === 'segment') {
           const p = e[1].geometry.p0.getCoordinate();
@@ -505,16 +493,14 @@ export class AutoFill implements IRun {
 
       const indexedFacetDistance = new IndexedFacetDistance(this.polygon);
 
-      for (let i = 0, n = travelEdges.getNumGeometries(); i < n; i++) {
-        const geometry = travelEdges.getGeometryN(i);
+      for (let i = 0, n = travelEdges.length; i < n; i++) {
+        const geometry = travelEdges[i];
         let p = geometry.getPointN(0),
           q = null;
         for (let j = 1, m = geometry.getNumPoints(); j < m; j++) {
           q = geometry.getPointN(j);
           const ls = new LineSegment(p.getX(), p.getY(), q.getX(), q.getY());
           const length = ls.getLength();
-          // const dToShape = this.shapeBoundary.distance(ls.toGeometry(this.factory));
-          // const dToShape = Math.max(Math.min(indexedFacetDistance.distance(ls.toGeometry(this.factory)), this.maximumInscribedCircle.maxDistance) / this.maximumInscribedCircle.maxDistance, 0.0001);
           const dToShape = indexedFacetDistance.distance(
             ls.toGeometry(this.geometryFactory),
           );
@@ -534,7 +520,6 @@ export class AutoFill implements IRun {
             const q1 = new Vector(ls.p0.getX(), ls.p0.getY());
             const q2 = new Vector(ls.p1.getX(), ls.p1.getY());
             if (
-              // v.geometry.lineIntersection(ls) // not sure why this isn't working?
               Utils.lineSegmentIntersection(p1, p2, q1, q2)
             ) {
               fillStitchGraph.edge(k).underpathEdges.push([p, q, 'travel']);
@@ -607,15 +592,6 @@ export class AutoFill implements IRun {
     const endingNode = this.endPosition
       ? this.getNearestNode(fillStitchGraph, endingPoint)
       : startingNode;
-
-    //     console.log(startingNode);
-    //     console.log(endingNode);
-
-    //     for (let [k, v] of Object.entries(h._edgeLabels)) {
-    //       if (!('weight' in v)) {
-    //         console.log(v);
-    //       }
-    //     }
 
     const path: [string, string, string | null][] = [];
     const vertexStack: [string, string | null][] = [[endingNode, null]];
@@ -767,9 +743,6 @@ export class AutoFill implements IRun {
           fillStitchGraph.node(edge[1]).geometry.getCoordinate().y,
         );
 
-        const rowDirection = rowEnd.subtract(rowStart).normalized();
-        const rowLength = rowEnd.distance(rowStart);
-
         const rowStartBasis = changeOfBasis2D(
           rowStart.subtract(this.centerPosition),
           Vector.fromAngle(this.angle),
@@ -821,46 +794,29 @@ export class AutoFill implements IRun {
         }
         rowStitches.unshift(minRowBasis);
         rowStitches.push(maxRowBasis);
-        // console.log(rowStitches);
 
-        // stitches.push(new Coordinate(rowStart.x, rowStart.y));
         if (rowStartBasis.x > rowEndBasis.x) {
           for (let i = rowStitches.length - 1; i >= 0; i--) {
-            const l = rowStart.lerp(rowEnd, Utils.map(rowStitches[i], rowStartBasis.x, rowEndBasis.x, 0, 1));
+            const l = rowStart.lerp(
+              rowEnd,
+              Utils.map(rowStitches[i], rowStartBasis.x, rowEndBasis.x, 0, 1),
+            );
             if (rowStart.distance(l) > pixelsPerMm) {
               stitches.push(new Coordinate(l.x, l.y));
             }
           }
         } else {
           for (let i = 0; i < rowStitches.length; i++) {
-            const l = rowStart.lerp(rowEnd, Utils.map(rowStitches[i], rowStartBasis.x, rowEndBasis.x, 0, 1));
+            const l = rowStart.lerp(
+              rowEnd,
+              Utils.map(rowStitches[i], rowStartBasis.x, rowEndBasis.x, 0, 1),
+            );
             if (rowStart.distance(l) > pixelsPerMm) {
               stitches.push(new Coordinate(l.x, l.y));
             }
           }
         }
-        // stitches.push(new Coordinate(rowEnd.x, rowEnd.y));
 
-        // stitches.push(new Coordinate(rowStart.x, rowStart.y));
-        // let offset = this.fillPattern[patternIndex].rowOffsetMm * pixelsPerMm;
-        // while (offset < rowLength) {
-        //   stitches.push(
-        //     new Coordinate(
-        //       rowStart.x + offset * rowDirection.x,
-        //       rowStart.y + offset * rowDirection.y,
-        //     ),
-        //   );
-        //   offset += this.fillPattern[patternIndex].rowPatternMm[0] * pixelsPerMm;
-        // }
-
-        // stitches.push();
-        // stitches.push();
-
-        // travel_graph.remove_edges_from(
-        //   fill_stitch_graph[edge[0]][edge[1]]['segment'].get('underpath_edges', [])
-        // )
-
-        // stitches.push(edge[0], edge[1]);
         if (fillStitchGraph.hasEdge(edge[0], edge[1])) {
           const edgeLabel = fillStitchGraph.edge(edge[0], edge[1]);
           if (edgeLabel.type === 'segment') {
@@ -876,24 +832,12 @@ export class AutoFill implements IRun {
         }
       } else {
         const travel = [];
-
-        // const dijkstra = graphlib.alg.dijkstra(travelGraph, edge[0], (e) => travelGraph.edge(e).weight, (v) => travelGraph.nodeEdges(v));
-        // if (dijkstra[edge[1]] !== null && dijkstra[edge[1]].distance < Infinity) {
-        //   let curr = edge[1];
-        //   while (curr !== edge[0]) {
-        //     travel.unshift(curr);
-        //     curr = dijkstra[curr].predecessor;
-        //   }
-        //   travel.unshift(edge[0]);
-        // }
-
         const shortestPath = this.aStar(travelGraph, edge[0], edge[1]);
         if (shortestPath) {
           for (let j = 1, m = shortestPath.length; j < m; j++) {
             travel.push(shortestPath[j]);
           }
         }
-
         if (travel.length > 0) {
           travel.forEach((v) =>
             stitches.push(travelGraph.node(v).geometry.getCoordinate()),
@@ -902,7 +846,6 @@ export class AutoFill implements IRun {
       }
     }
     return stitches;
-    // console.log(stitches);
   }
 
   aStar(graph: graphlib.Graph, source: string, target: string): string[] | null {
