@@ -519,9 +519,7 @@ export class AutoFill implements IRun {
             const p2 = new Vector(v.geometry.p1.getX(), v.geometry.p1.getY());
             const q1 = new Vector(ls.p0.getX(), ls.p0.getY());
             const q2 = new Vector(ls.p1.getX(), ls.p1.getY());
-            if (
-              Utils.lineSegmentIntersection(p1, p2, q1, q2)
-            ) {
+            if (Utils.lineSegmentIntersection(p1, p2, q1, q2)) {
               fillStitchGraph.edge(k).underpathEdges.push([p, q, 'travel']);
             }
           }
