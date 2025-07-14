@@ -1,7 +1,7 @@
 {
   "name": "@stitchables/stitchjs",
   "license": "MIT",
-  "version": "0.1.1",
+  "version": "1.0.0",
   "main": "dist/stitch.js",
   "module": "dist/stitch.mjs",
   "types": "dist/stitch.d.ts",
@@ -14,8 +14,14 @@
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.6",
+    "@types/graphlib": "^2.1.12",
+    "@types/jsts": "^0.17.24",
     "prettier": "^3.3.2",
     "tsup": "^8.1.0",
     "typescript": "^5.5.2"
+  },
+  "dependencies": {
+    "graphlib": "^2.1.8",
+    "jsts": "^2.12.1"
   }
 }
