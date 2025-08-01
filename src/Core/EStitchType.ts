@@ -3,6 +3,7 @@ export enum StitchType {
   JUMP,
   COLOR_CHANGE,
   TRIM,
+  START,
   STOP,
   TRAVEL,
 }

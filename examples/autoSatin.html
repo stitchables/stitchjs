@@ -1,7 +1,7 @@
 <!doctype html>
 <html>
   <head>
-    <title>Streamlines Animation Example</title>
+    <title>Auto Satin Example</title>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.7.1/jszip.min.js"></script>
     <script src="../dist/stitch.global.js"></script>
     <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
@@ -9,6 +9,72 @@
   <body>
     <script>
 
+      // let [w, h] = [1000, 1000];
+      // let pattern = new Stitch.Core.Pattern(w, h);
+      // let satinVertices = [
+      //   new Stitch.Math.Vector(0.2 * w, 0.45 * h), new Stitch.Math.Vector(0.25 * w, 0.55 * h),
+      //   new Stitch.Math.Vector(0.25 * w,  0.4 * h), new Stitch.Math.Vector(0.3 * w, 0.55 * h),
+      //   new Stitch.Math.Vector(0.4 * w,  0.25 * h), new Stitch.Math.Vector(0.45 * w,  0.5 * h),
+      //   new Stitch.Math.Vector(0.45 * w,  0.3 * h), new Stitch.Math.Vector(0.5 * w,  0.4 * h),
+      //   new Stitch.Math.Vector(0.6 * w, 0.25 * h), new Stitch.Math.Vector(0.65 * w,  0.4 * h),
+      //   new Stitch.Math.Vector(0.7 * w, 0.35 * h), new Stitch.Math.Vector(0.7 * w,  0.4 * h),
+      //   new Stitch.Math.Vector(0.8 * w, 0.45 * h), new Stitch.Math.Vector(0.85 * w, 0.55 * h),
+      // ];
+      // if (true) {
+      //   let debug = pattern.addThread(255, 0, 0);
+      //   for (let i = 0; i < satinVertices.length / 2; i++) {
+      //     debug.addRun(new Stitch.Core.Runs.Run(Stitch.Math.Polyline.fromVectors([satinVertices[2 * i], satinVertices[2 * i + 1]]), 1));
+      //   }
+      //   debug.addRun(new Stitch.Core.Runs.Run(
+      //     Stitch.Math.Polyline.fromVectors(
+      //       [
+      //         ...satinVertices.filter((element, index) => {
+      //           return index % 2 !== 0;
+      //         }),
+      //         ...satinVertices.filter((element, index) => {
+      //           return index % 2 !== 1;
+      //         }).reverse()
+      //       ],
+      //       true,
+      //     ), 1)
+      //   );
+      // }
+      // let thread = pattern.addThread(0, 0, 0);
+      // thread.addRun(new Stitch.Core.Runs.ClassicSatin(
+      //   satinVertices,
+      //   0.4,
+      //   new Stitch.Math.Vector(0.6 * w, 0.45 * h),
+      //   new Stitch.Math.Vector(0.35 * w, 0.2 * h)
+      // ));
+      // let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 3);
+      // canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+      // document.body.append(canvas);
+      // window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
+      //   if (typeof svg !== 'undefined') {
+      //     svg.remove();
+      //     svg = Stitch.Graphics.getSvg(pattern, window.innerWidth, window.innerHeight);
+      //     svg.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+      //     document.body.append(svg);
+      //   }
+      //   if (typeof canvas !== 'undefined') {
+      //     canvas.remove();
+      //     canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 3);
+      //     canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+      //     document.body.append(canvas);
+      //   }
+      // }, 10));
+      // let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'basicExample', 10, 500);
+      // document.body.appendChild(modal.container);
+      // window.addEventListener('click', (e) => {
+      //   if (e.target === modal.container) modal.close();
+      // });
+      // window.addEventListener("keydown", (e) => {
+      //   if (e.code === "KeyD") {
+      //     modal.open();
+      //   } else {
+      //     console.log(`Unmapped key pressed: Code ${e.code}.`);
+      //   }
+      // });
 
       class QT {
         constructor(bb, cap) {
@@ -188,27 +254,35 @@
 
 
 
+      let rng = new Stitch.Math.Random('0x1d4cca00672b48feb7e8aa9ace0258bd502bf7d5a516a720d6e01845d24f8f7e');
+      console.log(rng.hash);
+      let [ox, oy, oz, ow] = [rng.random_num(-1000, 1000), rng.random_num(-1000, 1000), rng.random_num(-1000, 1000), rng.random_num(-1000, 1000)];
 
-      let frameCount = 12;
+      let frameCount = 24;
       let [w, h] = [1000, 1000];
+      let wMm = Stitch.Math.Utils.inToMm(5.8);
+      let ppMm = w / wMm;
+      let hMm = h / ppMm;
       let patterns = [];
       for (let f = 0; f < frameCount; f++) {
+        console.log(`generating pattern for frame #${f}...`);
         let pattern = new Stitch.Core.Pattern(w, h);
         let scn = function(px, py, sx, sy, omi, oma) {
-          let x = 0.25 * (px + 10000) / sx;
-          let y = 0.25 * (py + 10000) / sy;
-          let z = 0.2 * Math.cos(2 * Math.PI * f / frameCount) + 100;
-          let w = 0.2 * Math.sin(2 * Math.PI * f / frameCount) + 100;
+          let x = 0.25 * (px + 10000) / sx + ox;
+          let y = 0.25 * (py + 10000) / sy + oy;
+          let z = 0.2 * Math.cos(2 * Math.PI) + 100 + oz;
+          let w = 0.6 * Math.sin(2 * Math.PI) + 100 + ow;
           return Stitch.Math.Utils.map(Stitch.Math.noise(x, y, z, w), 0, 1, omi, oma);
         }
         let vf = function(p) {
           let a = scn(p[0], p[1], 0.3 * w, 0.3 * h, 0, 4 * Math.PI);
           let r = 0.003 * Math.min(w, h);
           let o = Stitch.Math.Utils.map(f, 0, frameCount, 0, Math.PI);
-          // let o = 0;
+          let centerDist = Math.sqrt((p[0] - 0.5 * w) * (p[0] - 0.5 * w) + (p[1] - 0.5 * h) * (p[1] - 0.5 * h));
+          o -= -0.5 * (Math.cos(Stitch.Math.Utils.map(centerDist, 0.1, 0.5 * Math.max(w, h), 0, 2 * Math.PI, true)) - 1) * Stitch.Math.Utils.map(centerDist, 0, 0.5 * Math.max(w, h), 0, Math.PI);
           return [r * Math.cos(a + o), r * Math.sin(a + o)];
         };
-        let sf = function(p) { return 0.03 * Math.min(w, h); }
+        let sf = function(p) { return 0.02 * Math.min(w, h); }
         let dsf = function(p) { return 0.5; }
         let ess = new ESS([w, h], vf, sf, dsf);
         for (let x = 0; x < w; x += 10) {
@@ -219,33 +293,39 @@
         let sld = ess.getSl();
 
         let thread = pattern.addThread(0, 0, 0);
+
+        let satinBlocks = [];
         for (let sl of sld) {
-          // let polyline = new Stitch.Math.Polyline(false);
-          // for (let p of sl) {
-          // 	polyline.addVertex(p.x, p.y);
-          // }
-          // thread.addRun(new Stitch.Runs.Run(polyline, 1.5));
           if (sl.length > 3) {
-            let satinVertices = [];
+            const satinVertices = [];
             for (let i = 1; i < sl.length - 1; i++) {
               let prev = new Stitch.Math.Vector(sl[i - 1].x, sl[i - 1].y);
               let curr = new Stitch.Math.Vector(sl[i - 0].x, sl[i - 0].y);
               let next = new Stitch.Math.Vector(sl[i + 1].x, sl[i + 1].y);
               let n = curr.subtract(prev).add(next.subtract(curr)).divide(2)
                       .rotate(0.5 * Math.PI).normalized();
-              satinVertices.push(curr.add(n.multiply(8 * sl[i].t * sl[i].t + 3)));
-              satinVertices.push(curr.subtract(n.multiply(8 * sl[i].t * sl[i].t + 3)));
+              satinVertices.push(curr.add(n.multiply(0.5 * ppMm * sl[i].t * sl[i].t + 0.5 * ppMm)));
+              satinVertices.push(curr.subtract(n.multiply(0.5 * ppMm * sl[i].t * sl[i].t + 0.5 * ppMm)));
             }
-            let classicSatin = new Stitch.Core.Runs.ClassicSatin(satinVertices, 0.4);
-            thread.addRun(classicSatin);
+            let startPosition = satinVertices[Math.round(0.25 * satinVertices.length)];
+            let endPosition = satinVertices[Math.round(0.75 * satinVertices.length)];
+            if (Math.random() < 0.5) {
+              [startPosition, endPosition] = [endPosition, startPosition];
+            }
+            const classicSatin = new Stitch.Core.Runs.ClassicSatin(satinVertices, 0.8, 3, startPosition, endPosition);
+            // thread.addRun(classicSatin);
+            satinBlocks.push(classicSatin);
           }
         }
+        thread.addRun(new Stitch.Core.Runs.AutoSatin(satinBlocks, new Stitch.Math.Vector(0, 0), new Stitch.Math.Vector(w, h)));
         patterns.push(pattern);
       }
 
       let canvases = [];
       for (let i = 0; i < patterns.length; i++) {
-        let canvas = Stitch.Graphics.getCanvas(patterns[i], window.innerWidth, window.innerHeight, 3);
+        // let canvas = Stitch.Graphics.getCanvas(patterns[i], window.innerWidth, window.innerHeight, 3);
+        let pixelMultiplier = Math.min(window.innerWidth / wMm, window.innerHeight / hMm);
+        let canvas = Stitch.Graphics.getCanvas(patterns[i], pixelMultiplier * wMm, pixelMultiplier * hMm, pixelMultiplier);
         canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0; visibility: hidden;');
         canvases.push(canvas);
         document.body.append(canvas);
@@ -262,12 +342,8 @@
 
       const [dstZip, pesZip] = [new JSZip(), new JSZip()];
       for (let i = 0; i < frameCount; i++) {
-        const wMm = Stitch.Math.Utils.inToMm(3.8);
-        const hMm = Stitch.Math.Utils.inToMm(3.8);
         const dstData = Stitch.IO.getData(patterns[i], wMm, hMm, `essAnimation-${i}.dst`);
-        const pesData = Stitch.IO.getData(patterns[i], wMm, hMm, `essAnimation-${i}.pes`);
         dstZip.file(`essAnimation-${i}.dst`, dstData, { binary: true });
-        pesZip.file(`essAnimation-${i}.pes`, pesData, { binary: true });
       }
 
       window.addEventListener("keydown", async (e) => {
@@ -278,14 +354,6 @@
               const a = document.createElement('a');
               a.href = window.URL.createObjectURL(content);
               a.download = 'essAnimationDst.zip';
-              a.click();
-            });
-        } else if (e.code === "KeyP") {
-          pesZip.generateAsync({ type: "blob" })
-            .then((content) => {
-              const a = document.createElement('a');
-              a.href = URL.createObjectURL(content);
-              a.download = 'essAnimationPes.zip';
               a.click();
             });
         }

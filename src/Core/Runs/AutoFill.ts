@@ -26,6 +26,8 @@ import * as graphlib from 'graphlib';
 import { Stitch } from '../Stitch';
 import { geometryFactory } from '../../util/jsts';
 import { Utils } from '../../Math/Utils';
+import { StitchType } from '../EStitchType';
+import MinPriorityQueue from '../../Optimize/MinPriorityQueue';
 
 export class AutoFill implements IRun {
   shell: Polyline;
@@ -697,6 +699,28 @@ export class AutoFill implements IRun {
     fillStitchGraph: graphlib.Graph,
     pixelsPerMm: number,
   ): Coordinate[] {
+    const patternRowStitches = [];
+    for (let i = 0; i < this.fillPattern.length; i++) {
+      const rowStitches = [this.fillPattern[i].rowOffsetMm * pixelsPerMm];
+      let j = 0;
+      let curr = this.fillPattern[i].rowOffsetMm * pixelsPerMm;
+      while (curr < this.boundingRadius) {
+        curr += this.fillPattern[i].rowPatternMm[j] * pixelsPerMm;
+        rowStitches.push(curr);
+        j = (j + 1) % this.fillPattern[i].rowPatternMm.length;
+      }
+      j = this.fillPattern[i].rowPatternMm.length - 1;
+      curr = this.fillPattern[i].rowOffsetMm * pixelsPerMm;
+      while (curr > -this.boundingRadius) {
+        curr -= this.fillPattern[i].rowPatternMm[j] * pixelsPerMm;
+        rowStitches.unshift(curr);
+        j =
+          (j - 1 + this.fillPattern[i].rowPatternMm.length) %
+          this.fillPattern[i].rowPatternMm.length;
+      }
+      patternRowStitches.push(rowStitches);
+    }
+
     const collapsedPath = [];
     let runStart = null;
     for (const edge of path) {
@@ -732,86 +756,47 @@ export class AutoFill implements IRun {
     for (let i = 0, n = collapsedPath.length; i < n; i++) {
       const edge = collapsedPath[i];
       if (edge[2] === 'segment') {
-        const rowStart = new Vector(
-          fillStitchGraph.node(edge[0]).geometry.getCoordinate().x,
-          fillStitchGraph.node(edge[0]).geometry.getCoordinate().y,
+        const rowStart = Vector.fromObject(
+          fillStitchGraph.node(edge[0]).geometry.getCoordinate(),
         );
-        const rowEnd = new Vector(
-          fillStitchGraph.node(edge[1]).geometry.getCoordinate().x,
-          fillStitchGraph.node(edge[1]).geometry.getCoordinate().y,
+        const rowEnd = Vector.fromObject(
+          fillStitchGraph.node(edge[1]).geometry.getCoordinate(),
         );
 
         const rowStartBasis = changeOfBasis2D(
           rowStart.subtract(this.centerPosition),
           Vector.fromAngle(this.angle),
-          Vector.fromAngle(this.angle + 0.5 * Math.PI),
+          Vector.fromAngle(this.angle - 0.5 * Math.PI),
         );
         const rowEndBasis = changeOfBasis2D(
           rowEnd.subtract(this.centerPosition),
           Vector.fromAngle(this.angle),
-          Vector.fromAngle(this.angle + 0.5 * Math.PI),
+          Vector.fromAngle(this.angle - 0.5 * Math.PI),
         );
 
         const rowIndex = Math.round(rowStartBasis.y / (this.rowSpacingMm * pixelsPerMm));
         const patternIndex =
           ((rowIndex % this.fillPattern.length) + this.fillPattern.length) %
           this.fillPattern.length;
-        const rowPatternSegments = this.fillPattern[patternIndex].rowPatternMm.length;
-
-        const rowStitches = [];
 
         const minRowBasis = Math.min(rowStartBasis.x, rowEndBasis.x);
         const maxRowBasis = Math.max(rowStartBasis.x, rowEndBasis.x);
-
-        let negRowPosition = this.fillPattern[patternIndex].rowOffsetMm * pixelsPerMm;
-        let posRowPosition = this.fillPattern[patternIndex].rowOffsetMm * pixelsPerMm;
-        if (minRowBasis < negRowPosition && maxRowBasis > posRowPosition) {
-          rowStitches.push(negRowPosition);
-        }
-        let negRowPatternIndex = -1;
-        let posRowPatternIndex = 0;
-        while (
-          negRowPosition > -this.boundingRadius &&
-          posRowPosition < this.boundingRadius
+        stitches.push(new Coordinate(rowStart.x, rowStart.y));
+        for (
+          let j =
+            rowStartBasis.x < rowEndBasis.x
+              ? 0
+              : patternRowStitches[patternIndex].length - 1;
+          rowStartBasis.x < rowEndBasis.x
+            ? j < patternRowStitches[patternIndex].length
+            : j >= 0;
+          rowStartBasis.x < rowEndBasis.x ? j++ : j--
         ) {
-          negRowPatternIndex =
-            ((negRowPatternIndex % rowPatternSegments) + rowPatternSegments) %
-            rowPatternSegments;
-          negRowPosition -=
-            this.fillPattern[patternIndex].rowPatternMm[negRowPatternIndex] * pixelsPerMm;
-          posRowPosition +=
-            this.fillPattern[patternIndex].rowPatternMm[posRowPatternIndex] * pixelsPerMm;
-          if (negRowPosition > minRowBasis && negRowPosition < maxRowBasis) {
-            rowStitches.unshift(negRowPosition);
-          }
-          if (posRowPosition > minRowBasis && posRowPosition < maxRowBasis) {
-            rowStitches.push(posRowPosition);
-          }
-          negRowPatternIndex--;
-          posRowPatternIndex = (posRowPatternIndex + 1) % rowPatternSegments;
-        }
-        rowStitches.unshift(minRowBasis);
-        rowStitches.push(maxRowBasis);
-
-        if (rowStartBasis.x > rowEndBasis.x) {
-          for (let i = rowStitches.length - 1; i >= 0; i--) {
-            const l = rowStart.lerp(
-              rowEnd,
-              Utils.map(rowStitches[i], rowStartBasis.x, rowEndBasis.x, 0, 1),
-            );
-            if (rowStart.distance(l) > pixelsPerMm) {
-              stitches.push(new Coordinate(l.x, l.y));
-            }
-          }
-        } else {
-          for (let i = 0; i < rowStitches.length; i++) {
-            const l = rowStart.lerp(
-              rowEnd,
-              Utils.map(rowStitches[i], rowStartBasis.x, rowEndBasis.x, 0, 1),
-            );
-            if (rowStart.distance(l) > pixelsPerMm) {
-              stitches.push(new Coordinate(l.x, l.y));
-            }
+          const curr = patternRowStitches[patternIndex][j];
+          if (curr >= minRowBasis && curr <= maxRowBasis) {
+            const w = Utils.map(curr, rowStartBasis.x, rowEndBasis.x, 0, 1);
+            const l = rowStart.lerp(rowEnd, w);
+            stitches.push(new Coordinate(l.x, l.y));
           }
         }
 
@@ -898,64 +883,64 @@ export class AutoFill implements IRun {
   }
 }
 
-class MinPriorityQueue {
-  heap: any[];
-  constructor() {
-    this.heap = [];
-  }
-  isEmpty() {
-    return this.heap.length === 0;
-  }
-  enqueue(item: any) {
-    this.heap.push(item);
-    this._siftUp(this.heap.length - 1);
-  }
-  dequeue() {
-    if (this.isEmpty()) return null;
-    this._swap(0, this.heap.length - 1);
-    const min = this.heap.pop();
-    this._siftDown(0);
-    return min;
-  }
-  peek() {
-    return this.heap[0];
-  }
-  _parent(i: any) {
-    return Math.floor((i - 1) / 2);
-  }
-  _left(i: any) {
-    return 2 * i + 1;
-  }
-  _right(i: any) {
-    return 2 * i + 2;
-  }
-  _swap(i: any, j: any) {
-    [this.heap[i], this.heap[j]] = [this.heap[j], this.heap[i]];
-  }
-  _siftUp(i: any) {
-    let idx = i;
-    while (idx > 0) {
-      const p = this._parent(idx);
-      if (this.heap[p].priority <= this.heap[idx].priority) break;
-      this._swap(p, idx);
-      idx = p;
-    }
-  }
-  _siftDown(i: any) {
-    let idx = i,
-      len = this.heap.length;
-    while (true) {
-      const l = this._left(idx),
-        r = this._right(idx);
-      let smallest = idx;
-      if (l < len && this.heap[l].priority < this.heap[smallest].priority) smallest = l;
-      if (r < len && this.heap[r].priority < this.heap[smallest].priority) smallest = r;
-      if (smallest === idx) break;
-      this._swap(idx, smallest);
-      idx = smallest;
-    }
-  }
-}
+// class MinPriorityQueue {
+//   heap: any[];
+//   constructor() {
+//     this.heap = [];
+//   }
+//   isEmpty() {
+//     return this.heap.length === 0;
+//   }
+//   enqueue(item: any) {
+//     this.heap.push(item);
+//     this._siftUp(this.heap.length - 1);
+//   }
+//   dequeue() {
+//     if (this.isEmpty()) return null;
+//     this._swap(0, this.heap.length - 1);
+//     const min = this.heap.pop();
+//     this._siftDown(0);
+//     return min;
+//   }
+//   peek() {
+//     return this.heap[0];
+//   }
+//   _parent(i: any) {
+//     return Math.floor((i - 1) / 2);
+//   }
+//   _left(i: any) {
+//     return 2 * i + 1;
+//   }
+//   _right(i: any) {
+//     return 2 * i + 2;
+//   }
+//   _swap(i: any, j: any) {
+//     [this.heap[i], this.heap[j]] = [this.heap[j], this.heap[i]];
+//   }
+//   _siftUp(i: any) {
+//     let idx = i;
+//     while (idx > 0) {
+//       const p = this._parent(idx);
+//       if (this.heap[p].priority <= this.heap[idx].priority) break;
+//       this._swap(p, idx);
+//       idx = p;
+//     }
+//   }
+//   _siftDown(i: any) {
+//     let idx = i,
+//       len = this.heap.length;
+//     while (true) {
+//       const l = this._left(idx),
+//         r = this._right(idx);
+//       let smallest = idx;
+//       if (l < len && this.heap[l].priority < this.heap[smallest].priority) smallest = l;
+//       if (r < len && this.heap[r].priority < this.heap[smallest].priority) smallest = r;
+//       if (smallest === idx) break;
+//       this._swap(idx, smallest);
+//       idx = smallest;
+//     }
+//   }
+// }
 
 function changeOfBasis2D(v: Vector, b1: Vector, b2: Vector): Vector {
   const [x, y] = [v.x, v.y];

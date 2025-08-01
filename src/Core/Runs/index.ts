@@ -4,6 +4,7 @@ import { Satin } from './Satin';
 import { PatternFill } from './PatternFill';
 import { TatamiFill } from './TatamiFill';
 import { AutoFill } from './AutoFill';
+import { AutoSatin } from './AutoSatin';
 
 export const Runs = {
   Run,
@@ -12,4 +13,5 @@ export const Runs = {
   PatternFill,
   TatamiFill,
   AutoFill,
+  AutoSatin,
 };

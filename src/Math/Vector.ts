@@ -8,6 +8,9 @@ export class Vector {
   static fromAngle(angle: number): Vector {
     return new Vector(Math.cos(angle), Math.sin(angle));
   }
+  static fromObject(obj: { x: number; y: number }): Vector {
+    return new Vector(obj.x, obj.y);
+  }
   static min(v1: Vector, v2: Vector): Vector {
     return new Vector(Math.min(v1.x, v2.x), Math.min(v1.y, v2.y));
   }
