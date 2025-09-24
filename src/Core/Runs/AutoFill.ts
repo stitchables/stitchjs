@@ -832,7 +832,9 @@ export class AutoFill implements IRun {
         const travelSequence: Coordinate[] = [];
         if (shortestPath) {
           for (let j = 1, m = shortestPath.length; j < m; j++) {
-            travelSequence.push(travelGraph.node(shortestPath[j]).geometry.getCoordinate());
+            travelSequence.push(
+              travelGraph.node(shortestPath[j]).geometry.getCoordinate(),
+            );
           }
         }
         if (travelSequence.length > 1) {
