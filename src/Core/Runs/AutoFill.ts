@@ -2,16 +2,16 @@ import { IRun } from '../IRun';
 import { Polyline } from '../../Math/Polyline';
 import { Vector } from '../../Math/Vector';
 import {
-  GeometryFactory,
-  Geometry,
-  Polygon,
   Coordinate,
+  Envelope,
+  Geometry,
+  GeometryFactory,
   LinearRing,
-  LineString,
   LineSegment,
+  LineString,
   MultiLineString,
   Point,
-  Envelope,
+  Polygon,
 } from 'jsts/org/locationtech/jts/geom';
 import { MinimumBoundingCircle } from 'jsts/org/locationtech/jts/algorithm';
 import { OverlayOp } from 'jsts/org/locationtech/jts/operation/overlay';
@@ -28,6 +28,7 @@ import { geometryFactory } from '../../util/jsts';
 import { Utils } from '../../Math/Utils';
 import { StitchType } from '../EStitchType';
 import MinPriorityQueue from '../../Optimize/MinPriorityQueue';
+import VWSimplifier from 'jsts/org/locationtech/jts/simplify/VWSimplifier';
 
 export class AutoFill implements IRun {
   shell: Polyline;
@@ -127,9 +128,20 @@ export class AutoFill implements IRun {
     const fillStitchGraph = this.buildFillStitchGraph(fillSegments);
     const travelGraph = this.buildTravelGraph(fillStitchGraph, pixelsPerMm);
     const path = this.findStitchPath(fillStitchGraph, travelGraph);
-    return this.pathToStitches(path, travelGraph, fillStitchGraph, pixelsPerMm).map(
-      (c) => new Stitch(new Vector(c.x, c.y)),
-    );
+    const stitches = this.pathToStitches(
+      path,
+      travelGraph,
+      fillStitchGraph,
+      pixelsPerMm,
+    ).map((c) => new Stitch(new Vector(c.x, c.y)));
+    if (this.startPosition.distance(stitches[0].position) > pixelsPerMm) {
+      stitches[0].stitchType = StitchType.JUMP;
+      stitches.unshift(new Stitch(this.startPosition, StitchType.START));
+    }
+    if (this.endPosition.distance(stitches[stitches.length - 1].position) > pixelsPerMm) {
+      stitches.push(new Stitch(this.endPosition, StitchType.JUMP));
+    }
+    return stitches;
   }
 
   getRows(center: Vector, angle: number, radius: number, spacing: number, label = '') {
@@ -601,7 +613,7 @@ export class AutoFill implements IRun {
       const currVertex = vertexStack[vertexStack.length - 1];
       const neighbors = g.neighbors(currVertex[0]);
       if (neighbors?.length === 0) {
-        if (prevVertex[0] !== null) {
+        if (prevVertex[1] !== null) {
           path.push([prevVertex[0], currVertex[0], prevVertex[1]]);
         }
         prevVertex = currVertex;
@@ -733,6 +745,8 @@ export class AutoFill implements IRun {
             } else {
               collapsedPath.push([runStart, edge[0], 'collapsed']);
             }
+          } else {
+            collapsedPath.push([runStart, edge[0], 'outline']);
           }
           runStart = null;
         }
@@ -750,7 +764,7 @@ export class AutoFill implements IRun {
     const stitches = [];
 
     if (collapsedPath[0][2] !== 'segment') {
-      stitches.push(fillStitchGraph.node(path[0][0]).geometry.getCoordinate());
+      stitches.push(travelGraph.node(path[0][0]).geometry.getCoordinate());
     }
 
     for (let i = 0, n = collapsedPath.length; i < n; i++) {
@@ -814,17 +828,24 @@ export class AutoFill implements IRun {
           }
         }
       } else {
-        const travel = [];
         const shortestPath = this.aStar(travelGraph, edge[0], edge[1]);
+        const travelSequence: Coordinate[] = [];
         if (shortestPath) {
           for (let j = 1, m = shortestPath.length; j < m; j++) {
-            travel.push(shortestPath[j]);
+            travelSequence.push(travelGraph.node(shortestPath[j]).geometry.getCoordinate());
           }
         }
-        if (travel.length > 0) {
-          travel.forEach((v) =>
-            stitches.push(travelGraph.node(v).geometry.getCoordinate()),
-          );
+        if (travelSequence.length > 1) {
+          const travelLine = this.geometryFactory.createLineString(travelSequence);
+          const travelSimplified = VWSimplifier.simplify(travelLine, 0.5 * pixelsPerMm);
+          const travel = new Polyline(false);
+          for (let j = 0; j < travelSimplified.getNumPoints(); j++) {
+            const c = travelSimplified.getCoordinateN(j);
+            travel.addVertex(c.x, c.y);
+          }
+          travel
+            .getRadialDistanceResampled(pixelsPerMm * this.travelStitchLengthMm)
+            .vertices.forEach((v) => stitches.push(new Coordinate(v.x, v.y)));
         }
       }
     }

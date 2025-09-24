@@ -108,7 +108,7 @@ export class ClassicSatin {
         line.getCoordinateN(fromIndex),
         line.getCoordinateN(fromIndex + (fromIndex > toIndex ? -1 : 1)),
       ])
-      .buffer(0.01);
+      .buffer(0.0001);
     const fromCenterLocation = this.centerIndex.project(
       OverlayOp.intersection(this.centerLine, fromCross).getCoordinate(),
     );
@@ -117,7 +117,7 @@ export class ClassicSatin {
         line.getCoordinateN(toIndex),
         line.getCoordinateN(toIndex + (fromIndex > toIndex ? 1 : -1)),
       ])
-      .buffer(0.01);
+      .buffer(0.0001);
     const toCenterLocation = this.centerIndex.project(
       OverlayOp.intersection(this.centerLine, toCross).getCoordinate(),
     );
@@ -174,13 +174,17 @@ export class ClassicSatin {
       endLocation.getSegmentFraction() < 0.5
         ? endLocation.getSegmentIndex()
         : endLocation.getSegmentIndex() + 1;
-    const cut1 = startIndex < endIndex ? 0 : fullSatin.getNumPoints() - 1;
-    const cut2 = startIndex < endIndex ? fullSatin.getNumPoints() - 1 : 0;
+    const cut1 = startIndex < endIndex ? 2 : fullSatin.getNumPoints() - 3;
+    const cut2 = startIndex < endIndex ? fullSatin.getNumPoints() - 3 : 2;
     stitches.push(new Stitch(this.startPosition, StitchType.START));
     const firstSatin = fullSatin.getCoordinateN(startIndex);
     if (this.startPosition.distance(Vector.fromObject(firstSatin)) > pixelsPerMm) {
       stitches.push(new Stitch(new Vector(firstSatin.x, firstSatin.y), StitchType.JUMP));
     }
+    console.log(startIndex, cut1);
+    console.log(cut1, endIndex);
+    console.log(endIndex, cut2);
+    console.log(cut2, endIndex);
     stitches.push(...this.getTravelStitches(fullSatin, startIndex, cut1, pixelsPerMm));
     stitches.push(...this.getSatinStitches(fullSatin, cut1, endIndex));
     stitches.push(...this.getTravelStitches(fullSatin, endIndex, cut2, pixelsPerMm));
