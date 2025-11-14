@@ -20,8 +20,15 @@
     new Stitch.Math.Vector(200 + 100 * Math.cos(0 * 2 * Math.PI / 3), 200 + 100 * Math.sin(0 * 2 * Math.PI / 3)),
     new Stitch.Math.Vector(200 + 150 * Math.cos(0 * 2 * Math.PI / 3), 200 + 150 * Math.sin(0 * 2 * Math.PI / 3)),
   ];
-  const startPosition = new Stitch.Math.Vector(200 + 125 * Math.cos(0 * 2 * Math.PI / 3), 200 + 125 * Math.sin(0 * 2 * Math.PI / 3));
-  const endPosition = new Stitch.Math.Vector(200 + 125 * Math.cos(2 * 2 * Math.PI / 3), 200 + 125 * Math.sin(2 * 2 * Math.PI / 3));
+  // const startPosition = new Stitch.Math.Vector(200 + 125 * Math.cos(0 * 2 * Math.PI / 3), 200 + 125 * Math.sin(0 * 2 * Math.PI / 3));
+  // const endPosition = new Stitch.Math.Vector(200 + 125 * Math.cos(2 * 2 * Math.PI / 3), 200 + 125 * Math.sin(2 * 2 * Math.PI / 3));
+
+  // const startPosition = new Stitch.Math.Vector(100, 100);
+  // const endPosition = new Stitch.Math.Vector(150, 50);
+  // const startPosition = new Stitch.Math.Vector(150, 50);
+  // const endPosition = new Stitch.Math.Vector(100, 100);
+  const startPosition = new Stitch.Math.Vector(100, 320);
+  const endPosition = new Stitch.Math.Vector(350, 170);
 
   // const vertices = [
   //     new Stitch.Math.Vector(33, 313), new Stitch.Math.Vector(64, 335),
@@ -36,7 +43,8 @@
   // const startPosition = vertices[6];
 
   const thread = pattern.addThread(0, 0, 0);
-  thread.addRun(new Stitch.Core.Runs.ClassicSatin(vertices, 0.4, 3, startPosition, endPosition));
+  // thread.addRun(new Stitch.Core.Runs.ClassicSatin(vertices, 0.4, 3, startPosition, endPosition));
+  thread.addRun(new Stitch.Core.Runs.NewClassicSatin(vertices, { startPosition, endPosition, densityMm: 0.6, underlays: [{ type: 'CONTOUR' }, { type: 'CENTER_LINE' }, { type: 'ZIGZAG' }] }));
 
   let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 3);
   canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');

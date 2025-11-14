@@ -33,16 +33,16 @@ export class AutoSatin implements IRun {
   constructor(satinRuns: ClassicSatin[], startPosition?: Vector, endPosition?: Vector) {
     this.satinRuns = [];
     for (let classicSatin of satinRuns) {
-      if (classicSatin.vertices.length >= 4) {
+      if (classicSatin.quadStripVertices.length >= 4) {
         this.satinRuns.push(classicSatin);
       }
     }
     if (this.satinRuns.length > 0) {
-      this.startPosition = startPosition || this.satinRuns[0].vertices[0];
+      this.startPosition = startPosition || this.satinRuns[0].quadStripVertices[0];
       this.endPosition =
         endPosition ||
-        this.satinRuns[this.satinRuns.length - 1].vertices[
-          this.satinRuns[this.satinRuns.length - 1].vertices.length - 1
+        this.satinRuns[this.satinRuns.length - 1].quadStripVertices[
+          this.satinRuns[this.satinRuns.length - 1].quadStripVertices.length - 1
         ];
     } else {
       console.error('No valid classic satin runs found...');
@@ -74,7 +74,16 @@ export class AutoSatin implements IRun {
     const graph = new graphlib.Graph({ directed: false });
     const componentGraph = new graphlib.Graph({ directed: false });
     for (let i = 0; i < this.satinRuns.length; i++) {
-      const [satin, center] = this.satinRuns[i].getFullSatin(pixelsPerMm);
+      const satin = this.satinRuns[i].getFullSatin(pixelsPerMm);
+      const centerCoords: Coordinate[] = [];
+      for (let i = 0; i < 0.5 * satin.getNumPoints(); i++) {
+        const left = satin.getCoordinateN(2 * i);
+        const right = satin.getCoordinateN(2 * i + 1);
+        centerCoords.push(
+          new Coordinate(0.5 * (left.x + right.x), 0.5 * (left.y + right.y)),
+        );
+      }
+      const center = geometryFactory.createLineString(centerCoords);
       const locationIndex = new LocationIndexedLine(satin);
       const strTree = new STRtree();
       let curr = satin.getPointN(0);
@@ -143,14 +152,14 @@ export class AutoSatin implements IRun {
       const prev = graph.node(from);
       curr = graph.node(to);
       if (type === StitchType.TRAVEL) {
-        stitches.push(
-          ...this.satinRuns[prev.satinIndex].getTravelStitches(
-            componentGraph.node(prev.satinIndex).satin,
-            prev.pointIndex,
-            curr.pointIndex,
-            pixelsPerMm,
-          ),
-        );
+        // stitches.push(
+        //   ...this.satinRuns[prev.satinIndex].getTravelStitches(
+        //     componentGraph.node(prev.satinIndex).satin,
+        //     prev.pointIndex,
+        //     curr.pointIndex,
+        //     pixelsPerMm,
+        //   ),
+        // );
       } else {
         stitches.push(new Stitch(new Vector(curr.point.getX(), curr.point.getY()), type));
       }

@@ -1,7 +1,7 @@
 {
   "name": "@stitchables/stitchjs",
   "license": "MIT",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "main": "dist/stitch.js",
   "module": "dist/stitch.mjs",
   "types": "dist/stitch.d.ts",
@@ -22,6 +22,7 @@
   },
   "dependencies": {
     "graphlib": "^2.1.8",
-    "jsts": "^2.12.1"
+    "jsts": "^2.12.1",
+    "straight-skeleton": "^2.0.1"
   }
 }
