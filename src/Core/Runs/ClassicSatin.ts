@@ -261,12 +261,11 @@ export class ClassicSatin implements IRun {
       Math.round(this.lineData.center.len / (this.densityMm * pixelsPerMm)) + 1;
     const coords: Coordinate[] = [];
     for (let i = 0; i < (this.isClosed ? countCrosses : countCrosses + 1); i++) {
-      const left: Coordinate = this.lineData.left.lenIndex.extractPoint(
-        (i / countCrosses) * this.lineData.left.len,
+      const locationIndex = this.lineData.center.lenLocMap.getLocation(
+        (i / countCrosses) * this.lineData.center.len,
       );
-      const right: Coordinate = this.lineData.right.lenIndex.extractPoint(
-        (i / countCrosses) * this.lineData.right.len,
-      );
+      const left: Coordinate = this.lineData.left.locIndex.extractPoint(locationIndex);
+      const right: Coordinate = this.lineData.right.locIndex.extractPoint(locationIndex);
       coords.push(left);
       coords.push(right);
     }

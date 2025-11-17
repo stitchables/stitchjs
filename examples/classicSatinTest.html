@@ -11,40 +11,53 @@
   const pattern = new Stitch.Core.Pattern(400, 400);
 
   const vertices = [
-    new Stitch.Math.Vector(200 + 100 * Math.cos(0 * 2 * Math.PI / 3), 200 + 100 * Math.sin(0 * 2 * Math.PI / 3)),
-    new Stitch.Math.Vector(200 + 150 * Math.cos(0 * 2 * Math.PI / 3), 200 + 150 * Math.sin(0 * 2 * Math.PI / 3)),
-    new Stitch.Math.Vector(200 + 100 * Math.cos(1 * 2 * Math.PI / 3), 200 + 100 * Math.sin(1 * 2 * Math.PI / 3)),
-    new Stitch.Math.Vector(200 + 150 * Math.cos(1 * 2 * Math.PI / 3), 200 + 150 * Math.sin(1 * 2 * Math.PI / 3)),
-    new Stitch.Math.Vector(200 + 100 * Math.cos(2 * 2 * Math.PI / 3), 200 + 100 * Math.sin(2 * 2 * Math.PI / 3)),
-    new Stitch.Math.Vector(200 + 150 * Math.cos(2 * 2 * Math.PI / 3), 200 + 150 * Math.sin(2 * 2 * Math.PI / 3)),
-    new Stitch.Math.Vector(200 + 100 * Math.cos(0 * 2 * Math.PI / 3), 200 + 100 * Math.sin(0 * 2 * Math.PI / 3)),
-    new Stitch.Math.Vector(200 + 150 * Math.cos(0 * 2 * Math.PI / 3), 200 + 150 * Math.sin(0 * 2 * Math.PI / 3)),
+    new Stitch.Math.Vector(10, 10), new Stitch.Math.Vector(60, 60),
+    new Stitch.Math.Vector(100, 10), new Stitch.Math.Vector(100, 60),
+    new Stitch.Math.Vector(300, 10), new Stitch.Math.Vector(300, 60),
+    new Stitch.Math.Vector(390, 10), new Stitch.Math.Vector(340, 60),
+    new Stitch.Math.Vector(390, 100), new Stitch.Math.Vector(340, 100),
+    new Stitch.Math.Vector(390, 300), new Stitch.Math.Vector(340, 300),
+    new Stitch.Math.Vector(390, 390), new Stitch.Math.Vector(340, 340),
+    new Stitch.Math.Vector(300, 390), new Stitch.Math.Vector(300, 340),
+    new Stitch.Math.Vector(100, 390), new Stitch.Math.Vector(100, 340),
+    new Stitch.Math.Vector(10, 390), new Stitch.Math.Vector(60, 340),
+    new Stitch.Math.Vector(10, 300), new Stitch.Math.Vector(60, 300),
+    new Stitch.Math.Vector(10, 100), new Stitch.Math.Vector(60, 100),
+    new Stitch.Math.Vector(10, 10), new Stitch.Math.Vector(60, 60),
   ];
-  // const startPosition = new Stitch.Math.Vector(200 + 125 * Math.cos(0 * 2 * Math.PI / 3), 200 + 125 * Math.sin(0 * 2 * Math.PI / 3));
-  // const endPosition = new Stitch.Math.Vector(200 + 125 * Math.cos(2 * 2 * Math.PI / 3), 200 + 125 * Math.sin(2 * 2 * Math.PI / 3));
 
-  // const startPosition = new Stitch.Math.Vector(100, 100);
-  // const endPosition = new Stitch.Math.Vector(150, 50);
-  // const startPosition = new Stitch.Math.Vector(150, 50);
-  // const endPosition = new Stitch.Math.Vector(100, 100);
-  const startPosition = new Stitch.Math.Vector(100, 320);
-  const endPosition = new Stitch.Math.Vector(350, 170);
+  const options = {
+    startPosition: new Stitch.Math.Vector(0, 400),
+    endPosition: new Stitch.Math.Vector(400, 0),
+    densityMm: 0.6,
+    travelLengthMm: 3,
+    underlays: [
+      {
+        type: 'CONTOUR',
+        stitchLengthMm: 1.5,
+        capInsetMm: 5,
+        sideInsetMm: 5
+      },
+      {
+          type: 'CENTER_LINE',
+          stitchLengthMm: 1.5,
+          capInsetMm: 5
+      },
+      {
+          type: 'ZIGZAG',
+          densityMm: 1.5,
+          stitchLengthMm: 1.5,
+          capInsetMm: 5,
+          sideInsetMm: 5
+      },
+    ]
+  };
 
-  // const vertices = [
-  //     new Stitch.Math.Vector(33, 313), new Stitch.Math.Vector(64, 335),
-  //     new Stitch.Math.Vector(166, 188), new Stitch.Math.Vector(189, 203),
-  //     new Stitch.Math.Vector(214, 98), new Stitch.Math.Vector(240, 98),
-  //     new Stitch.Math.Vector(152, 49), new Stitch.Math.Vector(151, 18),
-  //     new Stitch.Math.Vector(108, 104), new Stitch.Math.Vector(78, 100),
-  //     new Stitch.Math.Vector(182, 185), new Stitch.Math.Vector(168, 204),
-  //     new Stitch.Math.Vector(326, 331), new Stitch.Math.Vector(299, 340)
-  // ];
-  // const endPosition = Stitch.Math.Utils.lineSegmentIntersection(vertices[2], vertices[3], vertices[10], vertices[11]);
-  // const startPosition = vertices[6];
+  const satinRun = new Stitch.Core.Runs.ClassicSatin(vertices, options);
+
 
   const thread = pattern.addThread(0, 0, 0);
-  // thread.addRun(new Stitch.Core.Runs.ClassicSatin(vertices, 0.4, 3, startPosition, endPosition));
-  thread.addRun(new Stitch.Core.Runs.NewClassicSatin(vertices, { startPosition, endPosition, densityMm: 0.6, underlays: [{ type: 'CONTOUR' }, { type: 'CENTER_LINE' }, { type: 'ZIGZAG' }] }));
+  thread.addRun(satinRun);
 
   let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 3);
   canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
