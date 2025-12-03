@@ -1,23 +1,24 @@
 import { Vector } from '../../Math/Vector';
 import { Stitch } from '../Stitch';
-import { Polyline } from '../../Math/Polyline';
 import { geometryFactory } from '../../util/jsts';
 import { Coordinate, LinearRing, LineString } from 'jsts/org/locationtech/jts/geom';
 import {
   LengthIndexedLine,
   LengthLocationMap,
   LinearGeometryBuilder,
-  LocationIndexedLine,
   LinearLocation,
+  LocationIndexedLine,
 } from 'jsts/org/locationtech/jts/linearref';
-import { DouglasPeuckerSimplifier } from 'jsts/org/locationtech/jts/simplify';
 import { StitchType } from '../EStitchType';
 import { IRun } from '../IRun';
 import { Run } from './Run';
 
 interface UnderlayOptions {
-  densityMm?: number;
   stitchLengthMm?: number;
+  stitchToleranceMm?: number;
+  travelLengthMm?: number;
+  travelToleranceMm?: number;
+  densityMm?: number;
   capInsetMm?: number;
   sideInsetMm?: number;
 }
@@ -36,6 +37,7 @@ export class ClassicSatin implements IRun {
   endPosition: Vector;
   densityMm: number;
   travelLengthMm: number;
+  travelToleranceMm: number;
   underlays: { type: string; options?: UnderlayOptions }[];
   lineData: { left: SatinLineData; right: SatinLineData; center: SatinLineData };
   isClosed: boolean;
@@ -47,6 +49,7 @@ export class ClassicSatin implements IRun {
       endPosition?: Vector;
       densityMm?: number;
       travelLengthMm?: number;
+      travelToleranceMm?: number;
       underlays?: { type: string; options?: UnderlayOptions }[];
     },
   ) {
@@ -59,6 +62,7 @@ export class ClassicSatin implements IRun {
     );
     this.densityMm = options?.densityMm ?? 0.4;
     this.travelLengthMm = options?.travelLengthMm ?? 3;
+    this.travelToleranceMm = options?.travelToleranceMm ?? 1;
     this.underlays = options?.underlays ?? [];
   }
 
@@ -146,39 +150,53 @@ export class ClassicSatin implements IRun {
       travelStitches.push(new Stitch(new Vector(last.x, last.y), StitchType.TRAVEL));
       return travelStitches;
     }
-    const lineStringBuilder = new LinearGeometryBuilder(geometryFactory);
+    const vertices: Vector[] = [];
     for (let i = 1; i < subsection.getNumPoints(); i++) {
       const prev = subsection.getCoordinateN(i - 1);
       const curr = subsection.getCoordinateN(i);
       const midpoint = new Vector(0.5 * (prev.x + curr.x), 0.5 * (prev.y + curr.y));
-      lineStringBuilder.add(new Coordinate(midpoint.x, midpoint.y));
+      vertices.push(midpoint);
     }
-    const travel = DouglasPeuckerSimplifier.simplify(
-      lineStringBuilder.getGeometry(),
-      pixelsPerMm,
-    );
-    const travelLength = travel.getLength();
-    const travelLengthIndex = new LengthIndexedLine(travel);
-    const countSamples = Math.round(travelLength / (this.travelLengthMm * pixelsPerMm));
-    for (let i = 0; i < countSamples; i++) {
-      const coord = travelLengthIndex.extractPoint(
-        (travelLength * (i + 1)) / countSamples,
-      );
-      travelStitches.push(new Stitch(new Vector(coord.x, coord.y), StitchType.TRAVEL));
-    }
-    return travelStitches;
+    const travelRun = new Run(vertices, { stitchLengthMm: this.travelLengthMm, stitchToleranceMm: this.travelToleranceMm });
+    return travelRun.getStitches(pixelsPerMm).map(s => {
+      s.stitchType = StitchType.TRAVEL;
+      return s;
+    });
+    // const lineStringBuilder = new LinearGeometryBuilder(geometryFactory);
+    // for (let i = 1; i < subsection.getNumPoints(); i++) {
+    //   const prev = subsection.getCoordinateN(i - 1);
+    //   const curr = subsection.getCoordinateN(i);
+    //   const midpoint = new Vector(0.5 * (prev.x + curr.x), 0.5 * (prev.y + curr.y));
+    //   lineStringBuilder.add(new Coordinate(midpoint.x, midpoint.y));
+    // }
+    // const travel = DouglasPeuckerSimplifier.simplify(
+    //   lineStringBuilder.getGeometry(),
+    //   pixelsPerMm,
+    // );
+    // const travelLength = travel.getLength();
+    // const travelLengthIndex = new LengthIndexedLine(travel);
+    // const countSamples = Math.round(travelLength / (this.travelLengthMm * pixelsPerMm));
+    // for (let i = 0; i < countSamples; i++) {
+    //   const coord = travelLengthIndex.extractPoint(
+    //     (travelLength * (i + 1)) / countSamples,
+    //   );
+    //   travelStitches.push(new Stitch(new Vector(coord.x, coord.y), StitchType.TRAVEL));
+    // }
+    // return travelStitches;
   }
 
   getStitches(pixelsPerMm: number): Stitch[] {
     const stitches = [new Stitch(this.startPosition, StitchType.START)];
     stitches.push(...this.getUnderlayStitches(this.startPosition, pixelsPerMm));
-    stitches.push(
-      ...this.getSatinStitches(
-        stitches.slice(-1)[0].position,
-        this.endPosition,
-        pixelsPerMm,
-      ),
-    );
+    if (this.densityMm > 0) {
+      stitches.push(
+        ...this.getSatinStitches(
+          stitches.slice(-1)[0].position,
+          this.endPosition,
+          pixelsPerMm,
+        ),
+      );
+    }
     return stitches;
   }
 
@@ -229,15 +247,17 @@ export class ClassicSatin implements IRun {
     const end_i2 = fullSatinLengthIndex.extractLine(endIndex, i2);
     const i2_end = fullSatinLengthIndex.extractLine(i2, endIndex);
     const start_end = fullSatinLengthIndex.extractLine(startIndex, endIndex);
-    stitches.push(new Stitch(new Vector(startCoord.x, startCoord.y), StitchType.TRAVEL));
+    if (startCoord.distance(new Coordinate(start.x, start.y)) > 0.5 * pixelsPerMm) {
+      stitches.push(new Stitch(new Vector(startCoord.x, startCoord.y), StitchType.TRAVEL));
+    }
     if (!this.isClosed) {
       stitches.push(...this.getTravelStitches(start_i1, pixelsPerMm));
       for (const coord of i1_end.getCoordinates()) {
-        stitches.push(new Stitch(new Vector(coord.x, coord.y), StitchType.TRAVEL));
+        stitches.push(new Stitch(new Vector(coord.x, coord.y), StitchType.NORMAL));
       }
       stitches.push(...this.getTravelStitches(end_i2, pixelsPerMm));
       for (const coord of i2_end.getCoordinates()) {
-        stitches.push(new Stitch(new Vector(coord.x, coord.y), StitchType.TRAVEL));
+        stitches.push(new Stitch(new Vector(coord.x, coord.y), StitchType.NORMAL));
       }
     } else {
       if (start_end.getLength() < start_i1.getLength() + i2_end.getLength()) {
@@ -249,7 +269,7 @@ export class ClassicSatin implements IRun {
       const s1 = fullSatinLengthIndex.extractLine(endIndex, fullSatinLength);
       const s2 = fullSatinLengthIndex.extractLine(0, endIndex);
       for (const coord of [...s1.getCoordinates(), ...s2.getCoordinates()]) {
-        stitches.push(new Stitch(new Vector(coord.x, coord.y), StitchType.TRAVEL));
+        stitches.push(new Stitch(new Vector(coord.x, coord.y), StitchType.NORMAL));
       }
     }
     stitches.push(new Stitch(new Vector(end.x, end.y), StitchType.TRAVEL));
@@ -276,8 +296,11 @@ export class ClassicSatin implements IRun {
     options: UnderlayOptions | undefined,
   ): Required<UnderlayOptions> {
     return {
-      densityMm: options?.densityMm ?? 3,
       stitchLengthMm: options?.stitchLengthMm ?? 3,
+      stitchToleranceMm: options?.stitchToleranceMm ?? 1,
+      travelLengthMm: options?.travelLengthMm ?? 6,
+      travelToleranceMm: options?.travelToleranceMm ?? 1,
+      densityMm: options?.densityMm ?? 3,
       capInsetMm: options?.capInsetMm ?? 0.7,
       sideInsetMm: options?.sideInsetMm ?? 0.6,
     };
@@ -308,38 +331,33 @@ export class ClassicSatin implements IRun {
     options: UnderlayOptions,
     pixelsPerMm: number,
   ): Stitch[] {
-    const { stitchLengthMm, capInsetMm, sideInsetMm } =
-      this.getUnderlayOptionsOrDefault(options);
-    const stitches: Stitch[] = [];
-    const capInsetPx = capInsetMm * pixelsPerMm;
-    const sideInsetPx = sideInsetMm * pixelsPerMm;
+    const underlayOptions = {
+      ...{ startPosition: start, endPosition: start },
+      ...this.getUnderlayOptionsOrDefault(options),
+    };
+    const capInsetPx = underlayOptions.capInsetMm * pixelsPerMm;
+    const sideInsetPx = underlayOptions.sideInsetMm * pixelsPerMm;
     const sLoc: LinearLocation = this.lineData.center.lenLocMap.getLocation(capInsetPx);
-    const eLoc: LinearLocation = this.lineData.center.lenLocMap.getLocation(-capInsetPx);
+    const eLoc: LinearLocation = this.lineData.center.lenLocMap.getLocation(
+      this.lineData.center.len - capInsetPx,
+    );
     const startInsets = this.getSideInsetAtLocation(sLoc, sideInsetPx);
-    const ringCoords: Coordinate[] = [startInsets.left, startInsets.right];
+    const vertices: Vector[] = [
+      new Vector(startInsets.left.x, startInsets.left.y),
+      new Vector(startInsets.right.x, startInsets.right.y),
+    ];
     for (let i = sLoc.getSegmentIndex() + 1; i <= eLoc.getSegmentIndex(); i++) {
       const loc = new LinearLocation(i, 0);
       const currInsets = this.getSideInsetAtLocation(loc, sideInsetPx);
-      ringCoords.unshift(currInsets.left);
-      ringCoords.push(currInsets.right);
+      vertices.unshift(new Vector(currInsets.left.x, currInsets.left.y));
+      vertices.push(new Vector(currInsets.right.x, currInsets.right.y));
     }
     const endInsets = this.getSideInsetAtLocation(eLoc, sideInsetPx);
-    ringCoords.unshift(endInsets.left);
-    ringCoords.push(endInsets.right);
-    ringCoords.push(ringCoords[0]);
-    const ring: LinearRing = geometryFactory.createLinearRing(ringCoords);
-    const ringLen = ring.getLength();
-    const ringLenIndex = new LengthIndexedLine(ring);
-    const steps = Math.round(ringLen / (stitchLengthMm * pixelsPerMm));
-    const ringStart = ringLenIndex.project(new Coordinate(start.x, start.y));
-    for (let i = 0; i <= steps; i++) {
-      const currLen = ringStart + (i / steps) * ringLen;
-      const coord = ringLenIndex.extractPoint(
-        currLen > ringLen ? currLen - ringLen : currLen,
-      );
-      stitches.push(new Stitch(new Vector(coord.x, coord.y), StitchType.NORMAL));
-    }
-    return stitches;
+    vertices.unshift(new Vector(endInsets.left.x, endInsets.left.y));
+    vertices.push(new Vector(endInsets.right.x, endInsets.right.y));
+    vertices.push(vertices[0]);
+    const contourRun = new Run(vertices, underlayOptions);
+    return contourRun.getStitches(pixelsPerMm);
   }
 
   getCenterLineUnderlay(
@@ -347,19 +365,25 @@ export class ClassicSatin implements IRun {
     options: UnderlayOptions,
     pixelsPerMm: number,
   ): Stitch[] {
-    const { stitchLengthMm, capInsetMm } = this.getUnderlayOptionsOrDefault(options);
-    if (capInsetMm <= 0) {
-      const coords = this.lineData.center.line.getCoordinates();
-      const polyline = Polyline.fromObjects(coords, this.isClosed);
-      const centerLineRun = new Run(polyline, { startPosition: start, stitchLengthMm });
+    const underlayOptions = {
+      ...{ startPosition: start },
+      ...this.getUnderlayOptionsOrDefault(options),
+    };
+    if (underlayOptions.capInsetMm <= 0) {
+      const vertices: Vector[] = this.lineData.center.line
+        .getCoordinates()
+        .map((c: Coordinate) => new Vector(c.x, c.y));
+      const centerLineRun = new Run(vertices, underlayOptions);
       return centerLineRun.getStitches(pixelsPerMm);
     } else {
-      const capInsetPx = capInsetMm * pixelsPerMm;
+      const capInsetPx = underlayOptions.capInsetMm * pixelsPerMm;
       const from = this.lineData.center.lenLocMap.getLocation(capInsetPx);
       const to = this.lineData.center.lenLocMap.getLocation(-capInsetPx);
       const inset = this.lineData.center.locIndex.extractLine(from, to);
-      const polyline = Polyline.fromObjects(inset.getCoordinates(), false);
-      const centerLineRun = new Run(polyline, { startPosition: start, stitchLengthMm });
+      const vertices: Vector[] = inset
+        .getCoordinates()
+        .map((c: Coordinate) => new Vector(c.x, c.y));
+      const centerLineRun = new Run(vertices, underlayOptions);
       return centerLineRun.getStitches(pixelsPerMm);
     }
   }
@@ -387,15 +411,15 @@ export class ClassicSatin implements IRun {
       zigCoords.push(i % 2 === 0 ? sideInsets.left : sideInsets.right);
       zagCoords.push(i % 2 === 0 ? sideInsets.right : sideInsets.left);
     }
-    const zigZag: LinearRing = geometryFactory.createLinearRing([
+    const zigZag: LinearRing = geometryFactory.createLineString([
       ...zigCoords,
-      ...zagCoords.reverse(),
-      zigCoords[0],
+      ...zagCoords.reverse()
     ]);
     const zigZagLocIndex = new LocationIndexedLine(zigZag);
     const zigZagStart = zigZagLocIndex.project(new Coordinate(start.x, start.y));
-    for (let i = 0, n = zigZag.getNumPoints(); i < n; i++) {
-      const coord = zigZag.getCoordinateN((i + zigZagStart.getSegmentIndex()) % n);
+    for (let i = 0, n = zigZag.getNumPoints(); i <= n; i++) {
+      const index = (i + zigZagStart.getSegmentIndex()) % n;
+      const coord = zigZag.getCoordinateN(index);
       stitches.push(new Stitch(new Vector(coord.x, coord.y), StitchType.NORMAL));
     }
     return stitches;

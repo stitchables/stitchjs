@@ -1,79 +1,823 @@
 <!DOCTYPE html>
 <html>
-    <head>
-        <title>Classic Satin Example</title>
-        <script src="../dist/stitch.global.js"></script>
-        <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
-    </head>
+<head>
+    <title>Classic Satin Example</title>
+    <script src="../dist/stitch.global.js"></script>
+    <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
+    <script src="https://cdn.jsdelivr.net/npm/p5@1.11.11/lib/p5.js"></script>
+</head>
 
 <body>
 <script>
-  const pattern = new Stitch.Core.Pattern(400, 400);
+    const pattern = new Stitch.Core.Pattern(2000, 2000);
 
-  const vertices = [
-    new Stitch.Math.Vector(10, 10), new Stitch.Math.Vector(60, 60),
-    new Stitch.Math.Vector(100, 10), new Stitch.Math.Vector(100, 60),
-    new Stitch.Math.Vector(300, 10), new Stitch.Math.Vector(300, 60),
-    new Stitch.Math.Vector(390, 10), new Stitch.Math.Vector(340, 60),
-    new Stitch.Math.Vector(390, 100), new Stitch.Math.Vector(340, 100),
-    new Stitch.Math.Vector(390, 300), new Stitch.Math.Vector(340, 300),
-    new Stitch.Math.Vector(390, 390), new Stitch.Math.Vector(340, 340),
-    new Stitch.Math.Vector(300, 390), new Stitch.Math.Vector(300, 340),
-    new Stitch.Math.Vector(100, 390), new Stitch.Math.Vector(100, 340),
-    new Stitch.Math.Vector(10, 390), new Stitch.Math.Vector(60, 340),
-    new Stitch.Math.Vector(10, 300), new Stitch.Math.Vector(60, 300),
-    new Stitch.Math.Vector(10, 100), new Stitch.Math.Vector(60, 100),
-    new Stitch.Math.Vector(10, 10), new Stitch.Math.Vector(60, 60),
-  ];
+    const raw = [
+        {
+            "x": 1685.2011755851208,
+            "y": 1138.9378624973376
+        },
+        {
+            "x": 1671.0543973257327,
+            "y": 1153.075353960808
+        },
+        {
+            "x": 1694.8794806297856,
+            "y": 1148.622525136913
+        },
+        {
+            "x": 1681.30556478662,
+            "y": 1163.333255324975
+        },
+        {
+            "x": 1705.0408068235922,
+            "y": 1157.2637691173568
+        },
+        {
+            "x": 1692.7138066000664,
+            "y": 1173.0348827521088
+        },
+        {
+            "x": 1715.8795570472307,
+            "y": 1165.0366357910675
+        },
+        {
+            "x": 1704.9183245209979,
+            "y": 1181.7871917046136
+        },
+        {
+            "x": 1727.3040540373897,
+            "y": 1171.834627076448
+        },
+        {
+            "x": 1717.844400448342,
+            "y": 1189.478677078888
+        },
+        {
+            "x": 1739.2228574360706,
+            "y": 1177.5555886480397
+        },
+        {
+            "x": 1731.4170793757153,
+            "y": 1195.9934900151975
+        },
+        {
+            "x": 1751.5463740725208,
+            "y": 1182.1020892665852
+        },
+        {
+            "x": 1745.5595591094861,
+            "y": 1201.2110585676005
+        },
+        {
+            "x": 1764.1890640452534,
+            "y": 1185.381350510226
+        },
+        {
+            "x": 1760.1909841867578,
+            "y": 1205.0061579727596
+        },
+        {
+            "x": 1777.0721216883574,
+            "y": 1187.304243807884
+        },
+        {
+            "x": 1775.2237649090596,
+            "y": 1207.2499136165568
+        },
+        {
+            "x": 1790.1925317545463,
+            "y": 1187.7852906737078
+        },
+        {
+            "x": 1790.494521159292,
+            "y": 1207.8098007996457
+        },
+        {
+            "x": 1801.6861712079487,
+            "y": 1187.016287391881
+        },
+        {
+            "x": 1803.8748915529015,
+            "y": 1206.9145622821632
+        },
+        {
+            "x": 1814.187996124761,
+            "y": 1185.0973637445243
+        },
+        {
+            "x": 1818.1124833710492,
+            "y": 1204.7292131988854
+        },
+        {
+            "x": 1826.725335034273,
+            "y": 1181.9986361573071
+        },
+        {
+            "x": 1832.5730051746295,
+            "y": 1201.155151895947
+        },
+        {
+            "x": 1838.3704986853736,
+            "y": 1177.7446189551426
+        },
+        {
+            "x": 1846.5771833049394,
+            "y": 1196.0393788202393
+        },
+        {
+            "x": 1848.190310397313,
+            "y": 1172.4676267119091
+        },
+        {
+            "x": 1859.4512315329137,
+            "y": 1189.1210941696856
+        },
+        {
+            "x": 1855.3380284224772,
+            "y": 1166.4955303727536
+        },
+        {
+            "x": 1870.434928696351,
+            "y": 1179.9439417709452
+        },
+        {
+            "x": 1859.4290150835268,
+            "y": 1160.260317336279
+        },
+        {
+            "x": 1878.3059495627763,
+            "y": 1167.9474489972172
+        },
+        {
+            "x": 1860.7873777969523,
+            "y": 1153.301545237036
+        },
+        {
+            "x": 1881.1332238058842,
+            "y": 1153.463572985755
+        },
+        {
+            "x": 1859.7998800552623,
+            "y": 1147.7760763078827
+        },
+        {
+            "x": 1878.9124540495254,
+            "y": 1141.0374237709061
+        },
+        {
+            "x": 1856.8512416932736,
+            "y": 1142.3925467212016
+        },
+        {
+            "x": 1873.0949551186513,
+            "y": 1130.4160203398928
+        },
+        {
+            "x": 1851.6884332501575,
+            "y": 1137.0635834566933
+        },
+        {
+            "x": 1864.6360543277945,
+            "y": 1121.6848864872118
+        },
+        {
+            "x": 1844.2683231471638,
+            "y": 1132.0053343440068
+        },
+        {
+            "x": 1854.2811811094052,
+            "y": 1114.6260251574095
+        },
+        {
+            "x": 1834.8628942811501,
+            "y": 1127.4962618620157
+        },
+        {
+            "x": 1842.4606504203275,
+            "y": 1108.9591246458072
+        },
+        {
+            "x": 1823.8673126720346,
+            "y": 1123.7186390329332
+        },
+        {
+            "x": 1829.4815940943413,
+            "y": 1104.5000627043867
+        },
+        {
+            "x": 1811.6970576675221,
+            "y": 1120.772427395989
+        },
+        {
+            "x": 1815.6308306374444,
+            "y": 1101.1470285681141
+        },
+        {
+            "x": 1798.760291084516,
+            "y": 1118.7095225718301
+        },
+        {
+            "x": 1801.2024960864348,
+            "y": 1098.8462773905396
+        },
+        {
+            "x": 1785.4560620060593,
+            "y": 1117.5552295910609
+        },
+        {
+            "x": 1786.4998392119683,
+            "y": 1097.5706549152521
+        },
+        {
+            "x": 1772.1789238172748,
+            "y": 1117.3186215955684
+        },
+        {
+            "x": 1771.8306044826234,
+            "y": 1097.309238774562
+        },
+        {
+            "x": 1759.3251407118187,
+            "y": 1117.9957531728692
+        },
+        {
+            "x": 1757.5008255584453,
+            "y": 1098.064125155147
+        },
+        {
+            "x": 1747.300234144969,
+            "y": 1119.5668515891614
+        },
+        {
+            "x": 1743.8072788378565,
+            "y": 1099.8532375650054
+        },
+        {
+            "x": 1736.3483397118644,
+            "y": 1122.0252470572434
+        },
+        {
+            "x": 1731.2081265794186,
+            "y": 1102.6813965655335
+        },
+        {
+            "x": 1724.3498535729223,
+            "y": 1125.7189510557125
+        },
+        {
+            "x": 1718.954403798194,
+            "y": 1106.453674527021
+        },
+        {
+            "x": 1709.9425284938432,
+            "y": 1129.3592428674776
+        },
+        {
+            "x": 1707.261971970345,
+            "y": 1109.407995583075
+        },
+        {
+            "x": 1693.9192093524166,
+            "y": 1129.6736853048073
+        },
+        {
+            "x": 1699.700684631919,
+            "y": 1109.5563786739353
+        },
+        {
+            "x": 1679.6085343615482,
+            "y": 1120.3117965855674
+        },
+        {
+            "x": 1697.3046019838503,
+            "y": 1107.988887334244
+        },
+        {
+            "x": 1676.2128702198995,
+            "y": 1105.4810602536802
+        },
+        {
+            "x": 1696.9885568973389,
+            "y": 1106.6085442992687
+        },
+        {
+            "x": 1680.7373190395922,
+            "y": 1092.4218275035469
+        },
+        {
+            "x": 1698.6963247885362,
+            "y": 1101.6792945136863
+        },
+        {
+            "x": 1688.651285184538,
+            "y": 1081.298646207594
+        },
+        {
+            "x": 1704.1190757246402,
+            "y": 1094.0575482640381
+        },
+        {
+            "x": 1698.2033533471397,
+            "y": 1071.2697707857703
+        },
+        {
+            "x": 1712.1687994443557,
+            "y": 1085.6060092893474
+        },
+        {
+            "x": 1708.1178401452496,
+            "y": 1062.31013006387
+        },
+        {
+            "x": 1721.281753760941,
+            "y": 1077.3707069227885
+        },
+        {
+            "x": 1717.0553772392875,
+            "y": 1054.755390920004
+        },
+        {
+            "x": 1729.9578814450836,
+            "y": 1070.0369324452206
+        },
+        {
+            "x": 1726.466844758446,
+            "y": 1046.818154360893
+        },
+        {
+            "x": 1739.3222215044782,
+            "y": 1062.1394412069976
+        },
+        {
+            "x": 1736.5054279368517,
+            "y": 1038.4382782342861
+        },
+        {
+            "x": 1749.1807384847095,
+            "y": 1053.9098783674829
+        },
+        {
+            "x": 1747.1291078072643,
+            "y": 1029.896930422565
+        },
+        {
+            "x": 1759.4149222399972,
+            "y": 1045.6816821031705
+        },
+        {
+            "x": 1758.2674659066993,
+            "y": 1021.5064063365185
+        },
+        {
+            "x": 1769.9346621203072,
+            "y": 1037.7571630621492
+        },
+        {
+            "x": 1769.8645319855093,
+            "y": 1013.577009576784
+        },
+        {
+            "x": 1780.6353992622683,
+            "y": 1030.4406237026576
+        },
+        {
+            "x": 1781.8803985899997,
+            "y": 1006.4223355278754
+        },
+        {
+            "x": 1791.396512006558,
+            "y": 1024.0330746990612
+        },
+        {
+            "x": 1794.2930076944695,
+            "y": 1000.3686163417028
+        },
+        {
+            "x": 1802.0795292658563,
+            "y": 1018.8228899583255
+        },
+        {
+            "x": 1807.094229908108,
+            "y": 995.7713896171972
+        },
+        {
+            "x": 1812.5320513179558,
+            "y": 1015.069137940397
+        },
+        {
+            "x": 1820.2667542203938,
+            "y": 993.0387729839374
+        },
+        {
+            "x": 1822.6108600603595,
+            "y": 1012.9783070745736
+        },
+        {
+            "x": 1833.7245163317557,
+            "y": 992.641650903579
+        },
+        {
+            "x": 1832.2414906796198,
+            "y": 1012.6941189580772
+        },
+        {
+            "x": 1847.2341063828244,
+            "y": 995.0601713009305
+        },
+        {
+            "x": 1841.496823922087,
+            "y": 1014.3510317249766
+        },
+        {
+            "x": 1860.397467873932,
+            "y": 1000.641241903524
+        },
+        {
+            "x": 1850.61438717441,
+            "y": 1018.2167437066161
+        },
+        {
+            "x": 1872.173132264283,
+            "y": 1008.956424382705
+        },
+        {
+            "x": 1859.1372076217256,
+            "y": 1024.234986491694
+        },
+        {
+            "x": 1882.173549170793,
+            "y": 1019.2098023992204
+        },
+        {
+            "x": 1866.8494106876285,
+            "y": 1032.1422701693728
+        },
+        {
+            "x": 1890.6544231567548,
+            "y": 1030.8658309074447
+        },
+        {
+            "x": 1873.8483352949713,
+            "y": 1041.76152225178
+        },
+        {
+            "x": 1897.914967496013,
+            "y": 1043.50624956892
+        },
+        {
+            "x": 1880.1878116560529,
+            "y": 1052.7983855438763
+        },
+        {
+            "x": 1904.2290687343404,
+            "y": 1056.7725377972329
+        },
+        {
+            "x": 1885.9469967112452,
+            "y": 1064.898763098579
+        },
+        {
+            "x": 1909.8358842259229,
+            "y": 1070.3237530514953
+        },
+        {
+            "x": 1891.2397765925064,
+            "y": 1077.6909799232772
+        },
+        {
+            "x": 1914.9465567770822,
+            "y": 1083.8155017827337
+        },
+        {
+            "x": 1896.20805197966,
+            "y": 1090.806812033449
+        },
+        {
+            "x": 1919.7505682991928,
+            "y": 1096.890538523267
+        },
+        {
+            "x": 1901.0153844474762,
+            "y": 1103.8908873632777
+        },
+        {
+            "x": 1924.4166189758107,
+            "y": 1109.1728080620712
+        },
+        {
+            "x": 1905.846117298543,
+            "y": 1116.6066435902892
+        },
+        {
+            "x": 1929.0846879099577,
+            "y": 1120.2609409079737
+        },
+        {
+            "x": 1910.9133149159811,
+            "y": 1128.6428326721593
+        },
+        {
+            "x": 1933.8421384439725,
+            "y": 1129.7225928584578
+        },
+        {
+            "x": 1916.4826574435992,
+            "y": 1139.7191812779076
+        },
+        {
+            "x": 1938.6717524797314,
+            "y": 1137.109278362847
+        },
+        {
+            "x": 1922.9244064656632,
+            "y": 1149.5715574247138
+        },
+        {
+            "x": 1943.3892469480559,
+            "y": 1142.073937376338
+        },
+        {
+            "x": 1930.7758885374972,
+            "y": 1157.8344036238827
+        },
+        {
+            "x": 1947.7978199618876,
+            "y": 1144.7102610630443
+        },
+        {
+            "x": 1940.5869490323037,
+            "y": 1163.7014111778046
+        },
+        {
+            "x": 1952.016296798641,
+            "y": 1145.507638893692
+        },
+        {
+            "x": 1952.591806158812,
+            "y": 1165.9705730822554
+        },
+        {
+            "x": 1958.7632353466238,
+            "y": 1143.8347208708356
+        },
+        {
+            "x": 1968.0473292126103,
+            "y": 1162.1383426735315
+        },
+        {
+            "x": 1964.7987006457502,
+            "y": 1138.794556690039
+        },
+        {
+            "x": 1979.9722837214404,
+            "y": 1152.1799176649847
+        },
+        {
+            "x": 1970.4277145290637,
+            "y": 1130.0261805426157
+        },
+        {
+            "x": 1988.3059481475532,
+            "y": 1139.1984779511536
+        },
+        {
+            "x": 1974.9271488031693,
+            "y": 1118.6737009820877
+        },
+        {
+            "x": 1994.015750979642,
+            "y": 1124.7921290643667
+        },
+        {
+            "x": 1977.9836159588522,
+            "y": 1106.345080812674
+        },
+        {
+            "x": 1997.6593800222163,
+            "y": 1110.0951222862554
+        },
+        {
+            "x": 1979.547716016915,
+            "y": 1094.7118599128996
+        },
+        {
+            "x": 1999.5305355497683,
+            "y": 1096.1781318241458
+        },
+        {
+            "x": 1979.7151375463286,
+            "y": 1081.6745829872477
+        },
+        {
+            "x": 1999.7298392522212,
+            "y": 1080.6581591522356
+        },
+        {
+            "x": 1978.2381387256175,
+            "y": 1068.8112327045678
+        },
+        {
+            "x": 1997.9713490632137,
+            "y": 1065.3432686102292
+        },
+        {
+            "x": 1975.2255840111864,
+            "y": 1056.151046392602
+        },
+        {
+            "x": 1994.4240456677724,
+            "y": 1050.4358142572096
+        },
+        {
+            "x": 1970.7878660091387,
+            "y": 1043.805086610977
+        },
+        {
+            "x": 1989.255381601225,
+            "y": 1036.056324920376
+        },
+        {
+            "x": 1965.041985562505,
+            "y": 1031.8947284708665
+        },
+        {
+            "x": 1982.6262011619724,
+            "y": 1022.3150168753795
+        },
+        {
+            "x": 1958.1129008127875,
+            "y": 1020.5467723170843
+        },
+        {
+            "x": 1974.6893913499428,
+            "y": 1009.3166811642316
+        },
+        {
+            "x": 1950.1332665960017,
+            "y": 1009.8897475897252
+        },
+        {
+            "x": 1965.590142470552,
+            "y": 997.164379733663
+        },
+        {
+            "x": 1940.9353245272137,
+            "y": 999.7113787395223
+        },
+        {
+            "x": 1955.7740580501663,
+            "y": 986.301979519766
+        }
+    ];
 
-  const options = {
-    startPosition: new Stitch.Math.Vector(0, 400),
-    endPosition: new Stitch.Math.Vector(400, 0),
-    densityMm: 0.6,
-    travelLengthMm: 3,
-    underlays: [
-      {
-        type: 'CONTOUR',
-        stitchLengthMm: 1.5,
-        capInsetMm: 5,
-        sideInsetMm: 5
-      },
-      {
-          type: 'CENTER_LINE',
-          stitchLengthMm: 1.5,
-          capInsetMm: 5
-      },
-      {
-          type: 'ZIGZAG',
-          densityMm: 1.5,
-          stitchLengthMm: 1.5,
-          capInsetMm: 5,
-          sideInsetMm: 5
-      },
-    ]
-  };
+    const vertices = raw.map(v => new Stitch.Math.Vector(v.x, v.y));
+    // const vertices = [
+    //   new Stitch.Math.Vector(10, 10), new Stitch.Math.Vector(60, 60),
+    //   new Stitch.Math.Vector(100, 10), new Stitch.Math.Vector(100, 60),
+    //   new Stitch.Math.Vector(300, 10), new Stitch.Math.Vector(300, 60),
+    //   new Stitch.Math.Vector(390, 10), new Stitch.Math.Vector(340, 60),
+    //   new Stitch.Math.Vector(390, 100), new Stitch.Math.Vector(340, 100),
+    //   new Stitch.Math.Vector(390, 300), new Stitch.Math.Vector(340, 300),
+    //   new Stitch.Math.Vector(390, 390), new Stitch.Math.Vector(340, 340),
+    //   new Stitch.Math.Vector(300, 390), new Stitch.Math.Vector(300, 340),
+    //   new Stitch.Math.Vector(100, 390), new Stitch.Math.Vector(100, 340),
+    //   new Stitch.Math.Vector(10, 390), new Stitch.Math.Vector(60, 340),
+    //   new Stitch.Math.Vector(10, 300), new Stitch.Math.Vector(60, 300),
+    //   new Stitch.Math.Vector(10, 100), new Stitch.Math.Vector(60, 100),
+    //   new Stitch.Math.Vector(10, 10), new Stitch.Math.Vector(60, 60),
+    // ];
 
-  const satinRun = new Stitch.Core.Runs.ClassicSatin(vertices, options);
+    const outlineOptions = {
+        densityMm: -1,
+        travelLengthMm: 3,
+        underlays: [
+            {
+                type: 'CONTOUR',
+                options: {
+                    capInsetMm: 0,
+                    sideInsetMm: 0,
+                    stitchToleranceMm: 0.25,
+                }
+            }
+        ]
+    };
+    const outlineRun = new Stitch.Core.Runs.ClassicSatin(vertices, outlineOptions);
+    // const outlineThread = pattern.addThread(255, 0, 0);
+    // outlineThread.addRun(outlineRun);
 
+    const options = {
+        // startPosition: new Stitch.Math.Vector(0, 400),
+        // endPosition: new Stitch.Math.Vector(400, 0),
+        densityMm: 0.6,
+        travelLengthMm: 3,
+        underlays: [
+            {
+                type: 'CENTER_LINE',
+                options: {
+                    stitchToleranceMm: 0.25,
+                    capInsetMm: 0
+                }
+            },
+            {
+                type: 'CONTOUR',
+                options: {
+                    capInsetMm: 2,
+                    sideInsetMm: 1,
+                    stitchToleranceMm: 0.25,
+                }
+            },
+            {
+                type: 'ZIGZAG',
+                densityMm: 1.5,
+                stitchLengthMm: 1.5,
+                capInsetMm: 0,
+                sideInsetMm: 0
+            },
+        ]
+    };
 
-  const thread = pattern.addThread(0, 0, 0);
-  thread.addRun(satinRun);
+    const satinRun = new Stitch.Core.Runs.ClassicSatin(vertices, options);
+    const thread = pattern.addThread(0, 0, 0);
+    thread.addRun(satinRun);
 
-  let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 3);
-  canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
-  document.body.append(canvas);
+    // let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 3);
+    // canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+    // document.body.append(canvas);
+    //
+    // window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
+    //     canvas.remove();
+    //     canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 3);
+    //     canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+    //     document.body.append(canvas);
+    // }, 10));
+    //
+    // let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'classicSatinExample', 10, 500);
+    // document.body.appendChild(modal.container);
+    // window.addEventListener('click', (e) => { if (e.target === modal.container) modal.close(); });
+    // window.addEventListener("keydown", (e) => { if (e.code === "KeyD") { modal.open(); }});
 
-  window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
-      canvas.remove();
-      canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 3);
-      canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
-      document.body.append(canvas);
-  }, 10));
+    const stitchPlan = pattern.getStitchPlan(Stitch.Math.Utils.inToMm(10), Stitch.Math.Utils.inToMm(10), 1);
+    const vTranslate = new Stitch.Math.Vector(
+      0.5 * stitchPlan.width * stitchPlan.pixelsPerUnit,
+      0.5 * stitchPlan.height * stitchPlan.pixelsPerUnit,
+    );
+    const scale = stitchPlan.pixelsPerUnit;
+    const bb = { min: { x: Infinity, y: Infinity }, max: { x: -Infinity, y: -Infinity } };
+    for (let i = 0; i < stitchPlan.threads.length; i++) {
+        for (let j = 0; j < stitchPlan.threads[i].runs.length; j++) {
+            for (let k = 0; k < stitchPlan.threads[i].runs[j].length; k++) {
+                stitchPlan.threads[i].runs[j][k].position =
+                  stitchPlan.threads[i].runs[j][k].position.subtract(vTranslate);
+                stitchPlan.threads[i].runs[j][k].position =
+                  stitchPlan.threads[i].runs[j][k].position.divide(scale);
+                if (stitchPlan.threads[i].runs[j][k].position.x < bb.min.x) bb.min.x = stitchPlan.threads[i].runs[j][k].position.x;
+                if (stitchPlan.threads[i].runs[j][k].position.x > bb.max.x) bb.max.x = stitchPlan.threads[i].runs[j][k].position.x;
+                if (stitchPlan.threads[i].runs[j][k].position.y < bb.min.y) bb.min.y = stitchPlan.threads[i].runs[j][k].position.y;
+                if (stitchPlan.threads[i].runs[j][k].position.y > bb.max.y) bb.max.y = stitchPlan.threads[i].runs[j][k].position.y;
+            }
+        }
+    }
+    stitchPlan.width /= stitchPlan.pixelsPerUnit;
+    stitchPlan.height /= stitchPlan.pixelsPerUnit;
 
-  let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'classicSatinExample', 10, 500);
-  document.body.appendChild(modal.container);
-  window.addEventListener('click', (e) => { if (e.target === modal.container) modal.close(); });
-  window.addEventListener("keydown", (e) => { if (e.code === "KeyD") { modal.open(); }});
+    console.log(stitchPlan);
+    console.log(bb);
+    bb.w = bb.max.x - bb.min.x;
+    bb.h = bb.max.y - bb.min.y;
+
+    let stitchCount = 0;
+    function setup() { createCanvas(800, 800); }
+    function draw() {
+        background(230);
+        noFill();
+        if (keyIsDown(DOWN_ARROW) === true) stitchCount = Math.max(0, stitchCount - 1);
+        if (keyIsDown(UP_ARROW) === true) stitchCount = Math.min(stitchPlan.stitchCount, stitchCount + 1);
+        let currStitch = 0;
+        while (currStitch < 10000) {
+            for (let i = 0; i < stitchPlan.threads.length; i++) {
+                for (let j = 0; j < stitchPlan.threads[i].runs.length; j++) {
+                    beginShape();
+                    for (let k = 0; k < stitchPlan.threads[i].runs[j].length; k++) {
+                        const p = stitchPlan.threads[i].runs[j][k].position;
+                        const t = p.subtract(new Stitch.Math.Vector(bb.min.x + 0.5 * bb.w, bb.min.y + 0.5 * bb.h));
+                        const s = t.multiply(10);
+                        vertex(s.x + 0.5 * width, s.y + 0.5 * height);
+                        // circle(s.x, s.y, 5);
+                        currStitch++;
+                        if (currStitch >= stitchCount) break;
+                    }
+                    endShape();
+                    if (currStitch >= stitchCount) break;
+                }
+                if (currStitch >= stitchCount) break;
+            }
+            if (currStitch >= stitchCount) break;
+        }
+    }
+    function keyPressed(e) {
+        if (e.key === "ArrowLeft") stitchCount = Math.max(0, stitchCount - 1);
+        if (e.key === "ArrowRight") stitchCount = Math.min(stitchPlan.stitchCount, stitchCount + 1);
+    }
 
 </script>
 </body>
