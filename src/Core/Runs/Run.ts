@@ -228,12 +228,12 @@ export class Run implements IRun {
     // main run
     const main = this.isClosed
       ? geometryFactory.createLineString([
-        ...this.lineIndex.extractLine(endProjLength, l1).getCoordinates(),
-        ...this.lineIndex.extractLine(l2, endProjLength).getCoordinates().slice(1),
-      ])
+          ...this.lineIndex.extractLine(endProjLength, l1).getCoordinates(),
+          ...this.lineIndex.extractLine(l2, endProjLength).getCoordinates().slice(1),
+        ])
       : geometryFactory.createLineString([
-        ...this.lineIndex.extractLine(l1, l2).getCoordinates(),
-      ]);
+          ...this.lineIndex.extractLine(l1, l2).getCoordinates(),
+        ]);
     const mainRun = this.evenRunLine(main, stitchLengthPx, stitchTolerancePx);
     for (let i = 1, n = mainRun.getNumPoints(); i < n; i++) {
       const coord = mainRun.getCoordinateN(i);

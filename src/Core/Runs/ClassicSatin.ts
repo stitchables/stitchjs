@@ -157,8 +157,11 @@ export class ClassicSatin implements IRun {
       const midpoint = new Vector(0.5 * (prev.x + curr.x), 0.5 * (prev.y + curr.y));
       vertices.push(midpoint);
     }
-    const travelRun = new Run(vertices, { stitchLengthMm: this.travelLengthMm, stitchToleranceMm: this.travelToleranceMm });
-    return travelRun.getStitches(pixelsPerMm).map(s => {
+    const travelRun = new Run(vertices, {
+      stitchLengthMm: this.travelLengthMm,
+      stitchToleranceMm: this.travelToleranceMm,
+    });
+    return travelRun.getStitches(pixelsPerMm).map((s) => {
       s.stitchType = StitchType.TRAVEL;
       return s;
     });
@@ -248,7 +251,9 @@ export class ClassicSatin implements IRun {
     const i2_end = fullSatinLengthIndex.extractLine(i2, endIndex);
     const start_end = fullSatinLengthIndex.extractLine(startIndex, endIndex);
     if (startCoord.distance(new Coordinate(start.x, start.y)) > 0.5 * pixelsPerMm) {
-      stitches.push(new Stitch(new Vector(startCoord.x, startCoord.y), StitchType.TRAVEL));
+      stitches.push(
+        new Stitch(new Vector(startCoord.x, startCoord.y), StitchType.TRAVEL),
+      );
     }
     if (!this.isClosed) {
       stitches.push(...this.getTravelStitches(start_i1, pixelsPerMm));
@@ -413,7 +418,7 @@ export class ClassicSatin implements IRun {
     }
     const zigZag: LinearRing = geometryFactory.createLineString([
       ...zigCoords,
-      ...zagCoords.reverse()
+      ...zagCoords.reverse(),
     ]);
     const zigZagLocIndex = new LocationIndexedLine(zigZag);
     const zigZagStart = zigZagLocIndex.project(new Coordinate(start.x, start.y));
