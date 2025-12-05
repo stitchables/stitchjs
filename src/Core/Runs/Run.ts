@@ -31,9 +31,12 @@ export class Run implements IRun {
     },
   ) {
     this.vertices = vertices;
-    this.line = geometryFactory.createLineString(
-      this.vertices.map((v) => new Coordinate(v.x, v.y)),
-    );
+    if (this.vertices.length < 2) {
+      this.line = geometryFactory.createLineString();
+    } else {
+      const coords = this.vertices.map((v) => new Coordinate(v.x, v.y));
+      this.line = geometryFactory.createLineString(coords);
+    }
     this.lineIndex = new LengthIndexedLine(this.line);
     if (this.vertices.length < 2) this.isClosed = false;
     else
@@ -41,10 +44,10 @@ export class Run implements IRun {
         this.vertices[0].distance(this.vertices[this.vertices.length - 1]) < 1e-7;
     this.startPosition = options?.startPosition;
     this.endPosition = options?.endPosition;
-    this.stitchLengthMm = options?.stitchLengthMm ?? 3;
-    this.stitchToleranceMm = options?.stitchToleranceMm ?? 1;
-    this.travelLengthMm = options?.travelLengthMm ?? 3;
-    this.travelToleranceMm = options?.travelToleranceMm ?? 1;
+    this.stitchLengthMm = Math.max(options?.stitchLengthMm ?? 3, 0.1);
+    this.stitchToleranceMm = Math.max(options?.stitchToleranceMm ?? 1, 0.01);
+    this.travelLengthMm = Math.max(options?.travelLengthMm ?? 3, 0.1);
+    this.travelToleranceMm = Math.max(options?.travelToleranceMm ?? 1, 0.01);
   }
 
   getStartAndEndPositions(run: LineString, runIndex: LengthIndexedLine): Coordinate[] {
@@ -176,6 +179,10 @@ export class Run implements IRun {
   getStitches(pixelsPerMm: number): Stitch[] {
     const stitches: Stitch[] = [];
 
+    if (this.vertices.length < 2) {
+      return this.vertices.map((v) => new Stitch(v, StitchType.NORMAL));
+    }
+
     const stitchLengthPx = this.stitchLengthMm * pixelsPerMm;
     const stitchTolerancePx = this.stitchToleranceMm * pixelsPerMm;
     const travelLengthPx = this.travelLengthMm * pixelsPerMm;
@@ -235,7 +242,7 @@ export class Run implements IRun {
           ...this.lineIndex.extractLine(l1, l2).getCoordinates(),
         ]);
     const mainRun = this.evenRunLine(main, stitchLengthPx, stitchTolerancePx);
-    for (let i = 1, n = mainRun.getNumPoints(); i < n; i++) {
+    for (let i = stitches.length === 0 ? 0 : 1, n = mainRun.getNumPoints(); i < n; i++) {
       const coord = mainRun.getCoordinateN(i);
       stitches.push(new Stitch(new Vector(coord.x, coord.y), StitchType.NORMAL));
     }

@@ -54,6 +54,9 @@ export class ClassicSatin implements IRun {
     },
   ) {
     this.quadStripVertices = quadStripVertices;
+    if (this.quadStripVertices.length < 4) {
+      console.warn('ClassicSatin: quadStripVertices must be greater than 4...');
+    }
     this.lineData = this.getLineData();
     this.isClosed = this.getIsClosed();
     [this.startPosition, this.endPosition] = this.getStartAndEndPositions(
