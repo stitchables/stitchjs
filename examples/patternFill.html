@@ -1,191 +1,440 @@
 <!doctype html>
 <html>
-  <head>
-    <title>PatternFill Example</title>
-    <script src="../dist/stitch.global.js"></script>
-    <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
-  </head>
-  <body>
-    <script>
-      let simplificationRatio = 0.5;
-      let shape = [
-        Stitch.Math.Polyline.fromArrays(
-          [
-            [102, 356],
-            [24, 251],
-            [32, 179],
-            [84, 250],
-            [58, 145],
-            [80, 108],
-            [127, 46],
-            [127, 102],
-            [102, 140],
-            [116, 164],
-            [135, 188],
-            [171, 151],
-            [193, 106],
-            [201, 73],
-            [233, 57],
-            [232, 86],
-            [225, 112],
-            [240, 116],
-            [256, 94],
-            [279, 73],
-            [320, 85],
-            [329, 118],
-            [354, 173],
-            [362, 228],
-            [356, 266],
-            [312, 211],
-            [269, 190],
-            [247, 206],
-            [227, 240],
-            [228, 262],
-            [243, 255],
-            [246, 233],
-            [256, 218],
-            [282, 219],
-            [312, 246],
-            [323, 268],
-            [331, 301],
-            [319, 325],
-            [290, 356],
-            [248, 362],
-            [216, 357],
-            [205, 337],
-            [199, 293],
-            [189, 246],
-            [172, 235],
-            [152, 245],
-            [139, 261],
-            [138, 283],
-            [146, 277],
-            [159, 257],
-            [174, 256],
-            [174, 274],
-            [177, 302],
-            [177, 336],
-            [158, 358],
-            [121, 366],
-          ],
-          true,
-        ).getSimplified(simplificationRatio),
-        Stitch.Math.Polyline.fromArrays(
-          [
-            [142, 324],
-            [142, 296],
-            [121, 297],
-            [108, 315],
-            [125, 338],
-          ],
-          true,
-        ).getSimplified(simplificationRatio),
-        Stitch.Math.Polyline.fromArrays(
-          [
-            [206, 139],
-            [194, 150],
-            [203, 166],
-            [217, 146],
-          ],
-          true,
-        ).getSimplified(simplificationRatio),
-        Stitch.Math.Polyline.fromArrays(
-          [
-            [234, 309],
-            [234, 326],
-            [260, 326],
-            [286, 295],
-            [286, 264],
-            [254, 279],
-          ],
-          true,
-        ).getSimplified(simplificationRatio),
-      ];
+<head>
+  <title>PatternFill Example</title>
+  <script src="../dist/stitch.global.js"></script>
+  <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.11.10/lib/p5.js"></script>
+</head>
+<body>
+<script>
 
-      let pattern = new Stitch.Core.Pattern(400, 400);
-      let thread = pattern.addThread(200, 0, 0);
+  const shape = [
+    [
+      { "x":190,"y":168 },{ "x":191,"y":186 },{ "x":178,"y":201 },{ "x":147,"y":201 },
+      { "x":144,"y":183 },{ "x":145,"y":158 },{ "x":183,"y":137 },{ "x":229,"y":138 },
+      { "x":245,"y":163 },{ "x":245,"y":186 },{ "x":238,"y":217 },{ "x":188,"y":230 },
+      { "x":142,"y":233 },{ "x":104,"y":233 },{ "x":88,"y":196 },{ "x":88,"y":125 },
+      { "x":125,"y":95 },{ "x":226,"y":80 },{ "x":273,"y":93 },{ "x":284,"y":159 },
+      { "x":285,"y":210 },{ "x":273,"y":247 },{ "x":206,"y":258 },{ "x":128,"y":270 },
+      { "x":67,"y":272 },{ "x":30,"y":231 },{ "x":22,"y":354 },{ "x":181,"y":349 },
+      { "x":369,"y":337 },{ "x":372,"y":139 },{ "x":353,"y":137 },{ "x":345,"y":229 },
+      { "x":326,"y":228 },{ "x":326,"y":134 },{ "x":314,"y":132 },{ "x":314,"y":248 },
+      { "x":301,"y":251 },{ "x":297,"y":66 },{ "x":162,"y":38 },{ "x":63,"y":112 },
+      { "x":71,"y":227 },{ "x":103,"y":256 },{ "x":254,"y":232 },{ "x":262,"y":167 },
+      { "x":231,"y":112 },{ "x":166,"y":117 },{ "x":119,"y":159 },{ "x":123,"y":201 },
+      { "x":145,"y":217 },{ "x":190,"y":209 },{ "x":207,"y":186 },{ "x":202,"y":158 },
+      { "x":190,"y":168 }
+    ],
+    [
+      { "x":339,"y":242 },{ "x":352,"y":258 },{ "x":339,"y":272 },{ "x":331,"y":254 },
+      { "x":339,"y":242 }
+    ]
+  ];
 
-      let angle = Math.random();
-      thread.addRun(
-        new Stitch.Core.Runs.PatternFill(
-          shape.map((p) => p.getRounded(5)),
-          0,
-          0.25,
-          [
-            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 0, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 6, rowPatternMm: [3, 9]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-            {rowOffsetMm: 0, rowPatternMm: [3]},
-          ],
-          3,
-          shape[0].vertices[0],
-          shape[0].vertices[0],
-        ),
-      );
+  // const shape = [
+  //   [
+  //     { x: 10, y: 10 }, { x: 150, y: 100 }, { x: 250, y: 100 }, { x: 390, y: 10 }, { x: 300, y: 200 },
+  //     { x: 390, y: 390 }, { x: 200, y: 300 }, { x: 10, y: 390 }, { x: 100, y: 200 },
+  //     { x: 10, y: 10 },
+  //   ]
+  // ];
+  let pattern = new Stitch.Core.Pattern(400, 400);
+  let thread = pattern.addThread(0, 0, 0);
 
-      let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
-      canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
-      document.body.append(canvas);
+  // let options = { angle: 0.5 };
+  // let fillRun = new Stitch.Core.Runs.PatternFill(shape, options);
+  //
+  // fillRun.getStitches(6);
+  // const polygons = fillRun.test();
 
-      let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'patternFill', 10, 500);
-      document.body.appendChild(modal.container);
-      window.addEventListener('click', (e) => {
-        if (e.target === modal.container) modal.close();
-      });
-      window.addEventListener('keydown', (e) => {
-        if (e.code === 'KeyD') modal.open();
-      });
+  // thread.addRun(fillRun);
+  //
+  // console.log(fillRun);
 
-      window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
-        canvas.remove();
-        canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
-        canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
-        document.body.append(canvas);
-      }, 10));
-    </script>
-  </body>
+  function setup() { createCanvas(400, 400); }
+  function keyPressed() {
+    let options = { angle: map(mouseX, 0.1 * width, 0.9 * width, 0, Math.PI, true) };
+    let fillRun = new Stitch.Core.Runs.PatternFill(shape, options);
+    const extremes = fillRun.getExtremes();
+    const nodedBoundaries = fillRun.getNodedBoundaries(extremes);
+    const { nodes, adjacency } = fillRun.buildPSG(extremes, nodedBoundaries);
+    console.log(extremes);
+    console.log(nodes, adjacency);
+  }
+  function draw() {
+    background(200);
+
+    let options = { angle: map(mouseX, 0.1 * width, 0.9 * width, 0, Math.PI, true) };
+    let fillRun = new Stitch.Core.Runs.PatternFill(shape, options);
+
+    if (frameCount === 1) fillRun.getStitches(6);
+
+    translate(fillRun.centroid.x, fillRun.centroid.y);
+    rotate(-fillRun.angle);
+
+    // console.log(fillRun.angle);
+    // drawGeometry(fillRun.polygon);
+    const extremes = fillRun.getExtremes();
+    const nodedBoundaries = fillRun.getNodedBoundaries(extremes);
+    const { nodes, adjacency } = fillRun.buildPSG(extremes, nodedBoundaries);
+    if (frameCount === 1) console.log(nodes, adjacency);
+    const polygons = fillRun.getFacesFromGraph(nodes, adjacency);
+
+    randomSeed(0);
+    polygons.forEach(polygon => {
+      fill(random(255), random(255), random(255));
+      drawGeometry(polygon);
+    });
+    // for (const boundary of nodedBoundaries) {
+    //   drawGeometry(boundary);
+    // }
+    // for (const boundary of nodedBoundaries) {
+    //   for (const coord of boundary.getCoordinates()) {
+    //     circle(coord.x, coord.y, 5);
+    //   }
+    // }
+    //
+    // for (const extreme of extremes) {
+    //   const coord = fillRun.boundaryData[extreme.shapeIndex].locationIndex.extractPoint(extreme.locationIndex);
+    //   circle(coord.x, coord.y, 5);
+    //   if (extreme.direction === 'LEFT' || extreme.direction === 'BOTH') {
+    //     line(coord.x, coord.y, coord.x - width, coord.y);
+    //   }
+    //   if (extreme.direction === 'RIGHT' || extreme.direction === 'BOTH') {
+    //     line(coord.x, coord.y, coord.x + width, coord.y);
+    //   }
+    // }
+
+    fill(0);
+    for (let i = 0; i < nodes.length; i++) {
+      // text(`${i}`, nodes[i].x + 5, nodes[i].y + 5);
+      circle(nodes[i].x, nodes[i].y, 3);
+    }
+    for (const [src, neighbors] of adjacency.entries()) {
+      const from = nodes[src];
+      for (const dst of neighbors) {
+        const to = nodes[dst];
+        // console.log(src, dst, from, to);
+        line(from.x, from.y, to.x, to.y);
+      }
+    }
+
+    // stroke(255, 0, 0);
+    // fill(0, 255, 0);
+    // const polygon = polygons[Math.floor(frameCount / 60) % polygons.length];
+    // drawGeometry(polygon);
+
+
+    // background(150);
+    //
+    // let options = { angle: map(mouseX, 0.1 * width, 0.9 * width, 0, Math.PI, true) };
+    // let fillRun = new Stitch.Core.Runs.PatternFill(shape, options);
+    // translate(fillRun.centroid.x, fillRun.centroid.y);
+    // rotate(-fillRun.angle);
+    //
+    // fill(200);
+    // noStroke();
+    // drawGeometry(fillRun.polygon);
+    //
+    // // const lineStrings = fillRun.getHatchLines(6);
+    // // if (frameCount === 1) console.log(lineStrings);
+    // // stroke(0);
+    // // lineStrings.forEach((lineString) => drawGeometry(lineString));
+    //
+    // const extremaData = fillRun.getExtremaData();
+    //
+    // for (const extreme of extremaData) {
+    //   stroke(0);
+    //   const computeChordEndpoints = fillRun.computeChordEndpoints(extreme.coordinate);
+    //   line(computeChordEndpoints.A.x, computeChordEndpoints.A.y, computeChordEndpoints.B.x, computeChordEndpoints.B.y);
+    // }
+    //
+    // stroke(0);
+    // fill(255, 0, 0);
+    // const polys = fillRun.splitPolygonAtBoundaryPointDeterministic(extremaData[0].coordinate);
+    // if (frameCount === 1) console.log(polys);
+    // // drawGeometry(polys);
+    // for (const poly of polys) {
+    //   drawGeometry(poly);
+    // }
+
+    // if (frameCount === 1) console.log(extremaData);
+    // fill(0);
+    // stroke(0);
+    // for (const extremePoint of extremaData) {
+    //   circle(extremePoint.coordinate.x, extremePoint.coordinate.y, 5);
+    //   drawGeometry(extremePoint.cut);
+    // }
+
+    // const cells = fillRun.getCells(extremaData);
+    // if (frameCount === 1) console.log(cells);
+    // stroke(0);
+    // strokeWeight(1);
+    // drawGeometry(cells);
+
+    // if (frameCount === 1) fillRun.getStitches(6);
+    // const lineStrings = fillRun.getHatchSpans(6);
+    // for (const ls of lineStrings) {
+    //   drawGeometry(ls);
+    // }
+
+    // fill(0);
+    // stroke(0);
+    // const edges = fillRun.buildEdgeGraph(6);
+    // if (frameCount === 1) console.log(edges);
+    // for (const edge of edges) {
+    //   const coords = edge.getCoordinates();
+    //   circle(coords[0].x, coords[0].y, 2);
+    //   circle(coords[coords.length - 1].x, coords[coords.length - 1].y, 2);
+    //   beginShape();
+    //   for (let coord of coords) {
+    //     vertex(coord.x, coord.y);
+    //   }
+    //   endShape();
+    // }
+
+    // if (frameCount === 1) console.log(fillRun.buildEdgeGraph(6));
+
+    // const faces = fillRun.buildEdgeGraph(2);
+    // for (const face of faces) {
+    //   let countLines = 0;
+    //   for (let i = 0; i < face.edges.length; i++) {
+    //     if (face.edges[i].source === 'line') countLines++;
+    //   }
+    //   if (countLines > 2) fill(0, 255, 0);
+    //   else fill(255, 0, 0);
+    //   drawGeometry(face.polygon);
+    // }
+    // drawGeometry(fillRun.buildEdgeGraph(6));
+  }
+
+  // let simplificationRatio = 0.5;
+  // let shape = [
+  //   Stitch.Math.Polyline.fromArrays(
+  //     [
+  //       [102, 356],
+  //       [24, 251],
+  //       [32, 179],
+  //       [84, 250],
+  //       [58, 145],
+  //       [80, 108],
+  //       [127, 46],
+  //       [127, 102],
+  //       [102, 140],
+  //       [116, 164],
+  //       [135, 188],
+  //       [171, 151],
+  //       [193, 106],
+  //       [201, 73],
+  //       [233, 57],
+  //       [232, 86],
+  //       [225, 112],
+  //       [240, 116],
+  //       [256, 94],
+  //       [279, 73],
+  //       [320, 85],
+  //       [329, 118],
+  //       [354, 173],
+  //       [362, 228],
+  //       [356, 266],
+  //       [312, 211],
+  //       [269, 190],
+  //       [247, 206],
+  //       [227, 240],
+  //       [228, 262],
+  //       [243, 255],
+  //       [246, 233],
+  //       [256, 218],
+  //       [282, 219],
+  //       [312, 246],
+  //       [323, 268],
+  //       [331, 301],
+  //       [319, 325],
+  //       [290, 356],
+  //       [248, 362],
+  //       [216, 357],
+  //       [205, 337],
+  //       [199, 293],
+  //       [189, 246],
+  //       [172, 235],
+  //       [152, 245],
+  //       [139, 261],
+  //       [138, 283],
+  //       [146, 277],
+  //       [159, 257],
+  //       [174, 256],
+  //       [174, 274],
+  //       [177, 302],
+  //       [177, 336],
+  //       [158, 358],
+  //       [121, 366],
+  //     ],
+  //     true,
+  //   ).getSimplified(simplificationRatio),
+  //   Stitch.Math.Polyline.fromArrays(
+  //     [
+  //       [142, 324],
+  //       [142, 296],
+  //       [121, 297],
+  //       [108, 315],
+  //       [125, 338],
+  //     ],
+  //     true,
+  //   ).getSimplified(simplificationRatio),
+  //   Stitch.Math.Polyline.fromArrays(
+  //     [
+  //       [206, 139],
+  //       [194, 150],
+  //       [203, 166],
+  //       [217, 146],
+  //     ],
+  //     true,
+  //   ).getSimplified(simplificationRatio),
+  //   Stitch.Math.Polyline.fromArrays(
+  //     [
+  //       [234, 309],
+  //       [234, 326],
+  //       [260, 326],
+  //       [286, 295],
+  //       [286, 264],
+  //       [254, 279],
+  //     ],
+  //     true,
+  //   ).getSimplified(simplificationRatio),
+  // ];
+  //
+  // let pattern = new Stitch.Core.Pattern(400, 400);
+  // let thread = pattern.addThread(200, 0, 0);
+  //
+  // let angle = Math.random();
+  // thread.addRun(
+  //   new Stitch.Core.Runs.PatternFill(
+  //     shape.map((p) => p.getRounded(5)),
+  //     0,
+  //     0.25,
+  //     [
+  //       {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 6, rowPatternMm: [3, 9]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //       {rowOffsetMm: 0, rowPatternMm: [3]},
+  //     ],
+  //     3,
+  //     shape[0].vertices[0],
+  //     shape[0].vertices[0],
+  //   ),
+  // );
+
+  // let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
+  // canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+  // document.body.append(canvas);
+  //
+  // let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'patternFill', 10, 500);
+  // document.body.appendChild(modal.container);
+  // window.addEventListener('click', (e) => {
+  //   if (e.target === modal.container) modal.close();
+  // });
+  // window.addEventListener('keydown', (e) => {
+  //   if (e.code === 'KeyD') modal.open();
+  // });
+  //
+  // window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
+  //   canvas.remove();
+  //   canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
+  //   canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+  //   document.body.append(canvas);
+  // }, 10));
+
+  function drawGeometry(g) {
+    let geomType = g.getGeometryType();
+    if (geomType === 'MultiLineString') {
+      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+        drawGeometry(g.getGeometryN(i));
+      }
+    } else if (geomType === 'LineString' || geomType === 'LinearRing') {
+      beginShape();
+      for (let i = 0, n = g.getNumPoints(); i < n; i++) {
+        const p = g.getPointN(i);
+        vertex(p.getX(), p.getY());
+      }
+      endShape();
+    } else if (geomType === 'Polygon') {
+      const shell = g.getExteriorRing();
+      beginShape();
+      for (let i = 0, n = shell.getNumPoints(); i < n; i++) {
+        const p = shell.getPointN(i);
+        vertex(p.getX(), p.getY());
+      }
+      for (let i = 0, n = g.getNumInteriorRing(); i < n; i++) {
+        const hole = g.getInteriorRingN(i);
+        beginContour();
+        for (let j = 0, m = hole.getNumPoints(); j < m; j++) {
+          const p = hole.getPointN(j);
+          vertex(p.getX(), p.getY());
+        }
+        endContour(CLOSE);
+      }
+      endShape(CLOSE);
+    } else if (geomType === 'GeometryCollection') {
+      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+        drawGeometry(g.getGeometryN(i));
+      }
+    } else if (geomType === 'Point') {
+      const coord = g.getCoordinate();
+      circle(coord.x, coord.y, 5);
+    } else if (geomType === 'MultiPolygon') {
+      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+        drawGeometry(g.getGeometryN(i));
+      }
+    }
+    else {
+      console.log(`Unrecognized Geometry Type: ${geomType}`);
+    }
+  }
+</script>
+</body>
 </html>
