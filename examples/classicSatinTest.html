@@ -786,6 +786,7 @@
     bb.h = bb.max.y - bb.min.y;
 
     let stitchCount = 0;
+    let points = [];
     function setup() { createCanvas(800, 800); }
     function draw() {
         background(230);
@@ -793,6 +794,7 @@
         if (keyIsDown(DOWN_ARROW) === true) stitchCount = Math.max(0, stitchCount - 1);
         if (keyIsDown(UP_ARROW) === true) stitchCount = Math.min(stitchPlan.stitchCount, stitchCount + 1);
         let currStitch = 0;
+        points = [];
         while (currStitch < 10000) {
             for (let i = 0; i < stitchPlan.threads.length; i++) {
                 for (let j = 0; j < stitchPlan.threads[i].runs.length; j++) {
@@ -803,6 +805,7 @@
                         const s = t.multiply(10);
                         vertex(s.x + 0.5 * width, s.y + 0.5 * height);
                         // circle(s.x, s.y, 5);
+                        points.push({ x: s.x + 0.5 * width, y: s.y + 0.5 * height });
                         currStitch++;
                         if (currStitch >= stitchCount) break;
                     }
@@ -817,6 +820,7 @@
     function keyPressed(e) {
         if (e.key === "ArrowLeft") stitchCount = Math.max(0, stitchCount - 1);
         if (e.key === "ArrowRight") stitchCount = Math.min(stitchPlan.stitchCount, stitchCount + 1);
+        if (e.key === " ") console.log(JSON.stringify(points));
     }
 
 </script>
