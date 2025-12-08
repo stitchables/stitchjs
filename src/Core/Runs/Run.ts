@@ -217,7 +217,10 @@ export class Run implements IRun {
           ]);
         }
       }
-    } else if (startProjLength > 0 && startProjLength < this.line.getLength()) {
+    } else if (
+      startProjLength > pixelsPerMm &&
+      startProjLength < this.line.getLength() - pixelsPerMm
+    ) {
       startExtract = this.lineIndex.extractLine(startProjLength, l1);
     }
     if (startExtract) {

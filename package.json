@@ -1,7 +1,7 @@
 {
   "name": "@stitchables/stitchjs",
   "license": "MIT",
-  "version": "1.0.6",
+  "version": "1.0.7",
   "main": "dist/stitch.js",
   "module": "dist/stitch.mjs",
   "types": "dist/stitch.d.ts",
