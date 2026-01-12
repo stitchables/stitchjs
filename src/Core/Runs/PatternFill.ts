@@ -1,62 +1,25 @@
-import { BoundingBox } from '../../Math/BoundingBox';
-import { Graph } from '../../Math/Graph';
-import { Polyline } from '../../Math/Polyline';
-import { Utils } from '../../Math/Utils';
 import { Vector } from '../../Math/Vector';
 import { Stitch } from '../Stitch';
-import { StitchType } from '../EStitchType';
 import {
-  Geometry,
+  GeometryFactory,
   Coordinate,
-  Point,
   Polygon,
   Envelope,
   LineString,
   LinearRing,
-  LineSegment,
-  MultiLineString,
-  GeometryCollection,
-  MultiPoint,
 } from 'jsts/org/locationtech/jts/geom';
-import {
-  AffineTransformation,
-  LineStringExtracter,
-  PointExtracter,
-} from 'jsts/org/locationtech/jts/geom/util';
+import { AffineTransformation } from 'jsts/org/locationtech/jts/geom/util';
 import Orientation from 'jsts/org/locationtech/jts/algorithm/Orientation';
 import { TopologyPreservingSimplifier } from 'jsts/org/locationtech/jts/simplify';
-import { DistanceOp } from 'jsts/org/locationtech/jts/operation/distance';
-import { OverlayOp } from 'jsts/org/locationtech/jts/operation/overlay';
 import {
   LocationIndexedLine,
   LengthIndexedLine,
   LengthLocationMap,
   LinearLocation,
 } from 'jsts/org/locationtech/jts/linearref';
-import EdgeGraph from 'jsts/org/locationtech/jts/edgegraph/EdgeGraph';
-import EdgeGraphBuilder from 'jsts/org/locationtech/jts/edgegraph/EdgeGraphBuilder';
-import RobustLineIntersector from 'jsts/org/locationtech/jts/algorithm/RobustLineIntersector';
-import IntersectionAdder from 'jsts/org/locationtech/jts/noding/IntersectionAdder';
-import EdgeSetNoder from 'jsts/org/locationtech/jts/operation/overlay/EdgeSetNoder';
-import SortedPackedIntervalRTree from 'jsts/org/locationtech/jts/index/intervalrtree/SortedPackedIntervalRTree';
-import STRTree from 'jsts/org/locationtech/jts/index/strtree/STRtree';
-import HalfEdge from 'jsts/org/locationtech/jts/edgegraph/HalfEdge';
-import { Polygonizer } from 'jsts/org/locationtech/jts/operation/polygonize';
-import { MCIndexNoder } from 'jsts/org/locationtech/jts/noding';
-import SimpleNoder from 'jsts/org/locationtech/jts/noding/SimpleNoder';
-import NodedSegmentString from 'jsts/org/locationtech/jts/noding/NodedSegmentString';
-import SegmentStringUtil from 'jsts/org/locationtech/jts/noding/SegmentStringUtil';
-import { GeometrySnapper } from 'jsts/org/locationtech/jts/operation/overlay/snap';
-import PlanarGraph from 'jsts/org/locationtech/jts/geomgraph/PlanarGraph';
-import Node from 'jsts/org/locationtech/jts/geomgraph/Node';
-import Edge from 'jsts/org/locationtech/jts/geomgraph/Edge';
-import DirectedEdge from 'jsts/org/locationtech/jts/geomgraph/DirectedEdge';
-import PolygonBuilder from 'jsts/org/locationtech/jts/operation/overlay/PolygonBuilder';
+import { Centroid } from 'jsts/org/locationtech/jts/algorithm';
 import { IRun } from '../IRun';
 import { geometryFactory } from '../../util/jsts';
-import SimpleMCSweepLineIntersector from 'jsts/org/locationtech/jts/geomgraph/index/SimpleMCSweepLineIntersector';
-import SegmentIntersector from 'jsts/org/locationtech/jts/geomgraph/index/SegmentIntersector';
-import ArrayList from 'jsts/java/util/ArrayList';
 
 interface BoundaryProjection {
   shapeIndex: number;
@@ -109,10 +72,11 @@ export class PatternFill implements IRun {
     },
   ) {
     this.polygon = this.createPolygon(shape);
-    this.centroid = this.polygon.getCentroid().getCoordinate();
+    // this.centroid = this.polygon.getCentroid().getCoordinate();
+    this.centroid = Centroid.getCentroid(this.polygon);
     this.angle = (options?.angle ?? 0) % Math.PI;
-    this.polygon = this.translate(this.polygon, -this.centroid.x, -this.centroid.y);
-    this.polygon = this.rotate(this.polygon, this.angle);
+    // this.polygon = this.translate(this.polygon, -this.centroid.x, -this.centroid.y);
+    // this.polygon = this.rotate(this.polygon, this.angle);
     this.boundaryData = this.getBoundaryData();
     [this.startPosition, this.endPosition] = this.getStartAndEndPositions(
       options?.startPosition,
@@ -127,8 +91,25 @@ export class PatternFill implements IRun {
     ];
     this.patternCenter = options?.patternCenter
       ? new Coordinate(options.patternCenter.x, options.patternCenter.y)
-      : this.polygon.getCentroid().getCoordinate();
+      : this.centroid;
     this.envelope = this.polygon.getEnvelopeInternal();
+  }
+
+  getBCD() {
+    return computeBCD_JSTS(
+      this.polygon,
+      {
+        dx: Math.cos(this.angle + 0.5 * Math.PI),
+        dy: Math.sin(this.angle + 0.5 * Math.PI),
+      },
+      geometryFactory,
+    );
+  }
+
+  getTrapezoids(polygon: Polygon) {
+    return trapezoidalDecompositionMonotoneAngle(polygon.getCoordinates(), this.angle);
+    // const centroid = polygon.getCentroid().getCoordinate();
+    // const trapezoids = trapezoidalDecompositionMonotone(this.rotate(polygon, -this.angle, centroid).getCoordinates());
   }
 
   translate(g: Polygon | Coordinate, tx: number, ty: number) {
@@ -136,7 +117,7 @@ export class PatternFill implements IRun {
   }
 
   rotate(
-    g: Polygon | Coordinate,
+    g: Polygon | Point,
     angle: number,
     center: Coordinate = new Coordinate(0, 0),
   ) {
@@ -250,534 +231,872 @@ export class PatternFill implements IRun {
     return boundaryData;
   }
 
-  projectCoordinateToBoundary(
-    c: Coordinate,
-    eps = 0.000001,
-  ): BoundaryProjection | undefined {
-    for (let i = 0; i < this.boundaryData.length; i++) {
-      if (
-        DistanceOp.isWithinDistance(
-          this.boundaryData[i].ring,
-          geometryFactory.createPoint(c),
-          eps,
-        )
-      ) {
-        const projection = this.boundaryData[i].locationIndex.project(c);
-        return {
-          shapeIndex: i,
-          locationIndex: this.boundaryData[i].locationIndex.project(c),
-          coordinate: this.boundaryData[i].lengthIndex.extractPoint(projection),
-        };
-      }
-    }
-    return undefined;
-  }
-
   getStitches(pixelsPerMm: number): Stitch[] {
     const stitches: Stitch[] = [];
-    const extremes = this.getExtremes();
-    const nodedBoundaries = this.getNodedBoundaries(extremes);
-    const { nodes, adjacency } = this.buildPSG(extremes, nodedBoundaries);
-    const faces: Polygon[] = this.getFacesFromGraph(nodes, adjacency);
+    // const extremes = this.getExtremes();
+    // const nodedBoundaries = this.getNodedBoundaries(extremes);
+    // const { nodes, adjacency } = this.buildPSG(extremes, nodedBoundaries);
+    // const faces: Polygon[] = this.getFacesFromGraph(nodes, adjacency);
     return stitches;
   }
+}
 
-  buildPSG(
-    extremes: {
-      shapeIndex: number;
-      locationIndex: LinearLocation;
-      direction: 'LEFT' | 'RIGHT' | 'BOTH';
-    }[],
-    nodedBoundaries: LineString[],
-  ): { nodes: Coordinate[]; adjacency: Map<number, number[]> } {
-    const strTree = new STRTree();
-    const nodes: Coordinate[] = [];
-    const adjacency: Map<number, number[]> = new Map();
-    for (let i = 0, index = 0; i < nodedBoundaries.length; i++) {
-      const startIndex = nodes.length;
-      for (let j = 0, n = nodedBoundaries[i].getNumPoints() - 1; j < n; j++) {
-        const prevIndex = j === 0 ? startIndex + n - 1 : startIndex + j - 1;
-        const nextIndex = j === n - 1 ? startIndex : startIndex + j + 1;
-        adjacency.set(nodes.length, [prevIndex, nextIndex]);
-        const coord = nodedBoundaries[i].getCoordinateN(j);
-        strTree.insert(new Envelope(coord), { coord, index });
-        nodes.push(coord);
-        index++;
-      }
-    }
+// bcd_jsts.ts
+//
+// Brute-Cell Decomposition (BCD) for a Polygon with holes,
+// adapted from polygon_coverage_planning::computeBCD (bcd.cc)
+// to use JSTS geometries.
+//
+// Usage:
+//   import { geom } from 'jsts';
+//   const gf = new geom.GeometryFactory();
+//   const cells = computeBCD_JSTS(polygon, { dx: 1, dy: 0 }, gf);
+//
+// Assumptions:
+// - polygon is a valid jsts.geom.Polygon (outer + holes).
+// - Rings are standard JTS/JSTS rings (first == last coordinate).
+// - Direction2 is a simple vector specifying sweep direction.
 
-    for (const extreme of extremes) {
-      const p: Coordinate = this.boundaryData[
-        extreme.shapeIndex
-      ].locationIndex.extractPoint(extreme.locationIndex);
-      const pEnv = new Envelope(p);
-      pEnv.expandBy(eps);
-      const pn: number = strTree.query(pEnv).array[0].index;
-      if (extreme.direction === 'BOTH' || extreme.direction === 'LEFT') {
-        const p1 = new Coordinate(p.x - eps, p.y + eps);
-        const p2 = new Coordinate(this.envelope.getMinX(), p.y - eps);
-        const env = new Envelope(p1, p2);
-        const candidates: { coord: Coordinate; index: number }[] =
-          strTree.query(env).array;
-        let minDistance = Infinity;
-        let minCandidate = undefined;
-        for (let i = 0; i < candidates.length; i++) {
-          const distance = candidates[i].coord.distance(p);
-          if (distance < minDistance) {
-            minDistance = distance;
-            minCandidate = candidates[i];
-          }
-        }
-        if (minCandidate !== undefined) {
-          const e1 = adjacency.get(pn);
-          const e2 = adjacency.get(minCandidate.index);
-          if (e1 && e2) {
-            e1.push(minCandidate.index);
-            adjacency.set(pn, e1);
-            e2.push(pn);
-            adjacency.set(minCandidate.index, e2);
-          }
-        }
-      }
-      if (extreme.direction === 'BOTH' || extreme.direction === 'RIGHT') {
-        const p1 = new Coordinate(p.x + eps, p.y + eps);
-        const p2 = new Coordinate(this.envelope.getMaxX(), p.y - eps);
-        const env = new Envelope(p1, p2);
-        const candidates: { coord: Coordinate; index: number }[] =
-          strTree.query(env).array;
-        let minDistance = Infinity;
-        let minCandidate = undefined;
-        for (let i = 0; i < candidates.length; i++) {
-          const distance = candidates[i].coord.distance(p);
-          if (distance < minDistance) {
-            minDistance = distance;
-            minCandidate = candidates[i];
-          }
-        }
-        if (minCandidate !== undefined) {
-          const e1 = adjacency.get(pn);
-          const e2 = adjacency.get(minCandidate.index);
-          if (e1 && e2) {
-            e1.push(minCandidate.index);
-            adjacency.set(pn, e1);
-            e2.push(pn);
-            adjacency.set(minCandidate.index, e2);
-          }
-        }
-      }
-    }
+import { geom } from 'jsts';
 
-    return { nodes, adjacency };
+interface Direction2 {
+  dx: number;
+  dy: number;
+}
+
+// Internal representation of polygon-with-holes using JSTS coordinates
+interface PolygonWithHoles {
+  outer: Coordinate[];
+  holes: Coordinate[][];
+}
+
+interface VertexRef {
+  ring: 'outer' | 'hole';
+  holeIndex?: number;
+  index: number; // index into ring *excluding* closing duplicate
+}
+
+interface Segment2 {
+  source: Coordinate;
+  target: Coordinate;
+}
+
+const EPS = 1e-9;
+
+function almostEqual(a: number, b: number, eps = EPS): boolean {
+  return Math.abs(a - b) <= eps;
+}
+
+function pointsEqual(a: Coordinate, b: Coordinate, eps = EPS): boolean {
+  return almostEqual(a.x, b.x, eps) && almostEqual(a.y, b.y, eps);
+}
+
+function equalX(a: Coordinate, b: Coordinate, eps = EPS): boolean {
+  return almostEqual(a.x, b.x, eps);
+}
+
+function lessX(a: Coordinate, b: Coordinate): boolean {
+  if (!almostEqual(a.x, b.x)) return a.x < b.x;
+  return a.y < b.y;
+}
+
+function lessY(a: Coordinate, b: Coordinate): boolean {
+  if (!almostEqual(a.y, b.y)) return a.y < b.y;
+  return a.x < b.x;
+}
+
+function cloneCoord(p: Coordinate): Coordinate {
+  return new Coordinate(p.x, p.y);
+}
+
+function clonePolygonCoords(poly: Coordinate[]): Coordinate[] {
+  return poly.map(cloneCoord);
+}
+
+// Signed area
+function polygonSignedArea(poly: Coordinate[]): number {
+  let sum = 0;
+  const n = poly.length;
+  for (let i = 0; i < n; i++) {
+    const p = poly[i];
+    const q = poly[(i + 1) % n];
+    sum += p.x * q.y - q.x * p.y;
+  }
+  return 0.5 * sum;
+}
+
+function isClockwise(poly: Coordinate[]): boolean {
+  return polygonSignedArea(poly) < 0;
+}
+
+// Basic segment intersection for simplicity checks
+function segmentsIntersectProper(a: Segment2, b: Segment2): boolean {
+  const p1 = a.source;
+  const p2 = a.target;
+  const p3 = b.source;
+  const p4 = b.target;
+
+  function orient(o: Coordinate, p: Coordinate, q: Coordinate): number {
+    return (p.x - o.x) * (q.y - o.y) - (p.y - o.y) * (q.x - o.x);
   }
 
-  getExtremes(eps = 1e-7): {
-    shapeIndex: number;
-    locationIndex: LinearLocation;
-    direction: 'LEFT' | 'RIGHT' | 'BOTH';
-  }[] {
-    const extremes: {
-      shapeIndex: number;
-      locationIndex: LinearLocation;
-      direction: 'LEFT' | 'RIGHT' | 'BOTH';
-    }[] = [];
-    for (let i = 0; i < this.boundaryData.length; i++) {
-      for (let j = 0, n = this.boundaryData[i].ring.getNumPoints() - 1; j < n; j++) {
-        const prev = this.boundaryData[i].ring.getCoordinateN((j + 0) % n);
-        const curr = this.boundaryData[i].ring.getCoordinateN((j + 1) % n);
-        const next = this.boundaryData[i].ring.getCoordinateN((j + 2) % n);
-        const n1 = new Coordinate(curr.x - prev.x, curr.y - prev.y);
-        const n2 = new Coordinate(curr.x - next.x, curr.y - next.y);
-        const cross = n1.x * n2.y - n1.y * n2.x;
-        if (cross > 0) {
-          const shapeIndex = i;
-          const locationIndex = new LinearLocation((j + 1) % n, 0);
-          if (Math.sign(curr.y - prev.y) === Math.sign(curr.y - next.y)) {
-            extremes.push({ shapeIndex, locationIndex, direction: 'BOTH' });
-          } else if (Math.abs(curr.y - prev.y) < eps && Math.abs(curr.y - next.y) > eps) {
-            extremes.push({
-              shapeIndex,
-              locationIndex,
-              direction: curr.x < prev.x ? 'LEFT' : 'RIGHT',
-            });
-          } else if (Math.abs(curr.y - next.y) < eps && Math.abs(curr.y - prev.y) > eps) {
-            extremes.push({
-              shapeIndex,
-              locationIndex,
-              direction: curr.x < next.x ? 'LEFT' : 'RIGHT',
-            });
-          }
-        }
-      }
-    }
-    return extremes;
-  }
-
-  getNodedBoundaries(
-    extremes: {
-      shapeIndex: number;
-      locationIndex: LinearLocation;
-      direction: 'LEFT' | 'RIGHT' | 'BOTH';
-    }[],
-    eps = 1e-7,
-  ): LinearRing[] {
-    const newNodeLengthIndices: number[][] = Array.from(
-      { length: this.boundaryData.length },
-      () => [],
+  function onSegment(o: Coordinate, p: Coordinate, q: Coordinate): boolean {
+    return (
+      Math.min(o.x, q.x) - EPS <= p.x &&
+      p.x <= Math.max(o.x, q.x) + EPS &&
+      Math.min(o.y, q.y) - EPS <= p.y &&
+      p.y <= Math.max(o.y, q.y) + EPS &&
+      almostEqual(orient(o, p, q), 0)
     );
-    for (const extreme of extremes) {
-      const p: Coordinate = this.boundaryData[
-        extreme.shapeIndex
-      ].locationIndex.extractPoint(extreme.locationIndex);
-      if (extreme.direction === 'BOTH' || extreme.direction === 'LEFT') {
-        const p1 = new Coordinate(p.x - eps, p.y);
-        const p2 = new Coordinate(this.envelope.getMinX(), p.y);
-        const lineString = geometryFactory.createLineString([p1, p2]);
-        let minDistance = Infinity;
-        let minShapeIndex: number | undefined = undefined;
-        let minLengthIndex: number | undefined = undefined;
-        for (let i = 0; i < this.boundaryData.length; i++) {
-          const intersection = OverlayOp.overlayOp(
-            this.boundaryData[i].ring,
-            lineString,
-            OverlayOp.INTERSECTION,
-          );
-          const points: Point[] = PointExtracter.getPoints(intersection).array;
-          const coords: Coordinate[] = points.map((v: Point) => v.getCoordinate());
-          for (const coord of coords) {
-            const distance = coord.distance(p);
-            if (distance < minDistance) {
-              minDistance = distance;
-              minShapeIndex = i;
-              minLengthIndex = this.boundaryData[i].lengthIndex.project(coord);
-            }
-          }
-        }
-        if (minShapeIndex !== undefined && minLengthIndex !== undefined) {
-          newNodeLengthIndices[minShapeIndex].push(minLengthIndex);
-        }
+  }
+
+  const o1 = orient(p1, p2, p3);
+  const o2 = orient(p1, p2, p4);
+  const o3 = orient(p3, p4, p1);
+  const o4 = orient(p3, p4, p2);
+
+  if (o1 * o2 < 0 && o3 * o4 < 0) return true;
+
+  if (almostEqual(o1, 0) && onSegment(p1, p3, p2)) return true;
+  if (almostEqual(o2, 0) && onSegment(p1, p4, p2)) return true;
+  if (almostEqual(o3, 0) && onSegment(p3, p1, p4)) return true;
+  if (almostEqual(o4, 0) && onSegment(p3, p2, p4)) return true;
+
+  return false;
+}
+
+function polygonIsSimple(poly: Coordinate[]): boolean {
+  const n = poly.length;
+  if (n < 3) return false;
+  const edges: Segment2[] = [];
+  for (let i = 0; i < n; i++) {
+    edges.push({ source: poly[i], target: poly[(i + 1) % n] });
+  }
+  for (let i = 0; i < edges.length; i++) {
+    for (let j = i + 1; j < edges.length; j++) {
+      if (j === i + 1 || (i === 0 && j === edges.length - 1)) continue;
+      if (segmentsIntersectProper(edges[i], edges[j])) return false;
+    }
+  }
+  return true;
+}
+
+// Ray casting
+function pointInPolygon(poly: Coordinate[], p: Coordinate): boolean {
+  let inside = false;
+  const n = poly.length;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const pi = poly[i];
+    const pj = poly[j];
+
+    const intersect =
+      pi.y > p.y !== pj.y > p.y &&
+      p.x <
+        ((pj.x - pi.x) * (p.y - pi.y)) / (pj.y - pi.y + (pj.y === pi.y ? EPS : 0)) + pi.x;
+
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function segmentHasOnPositiveSide(seg: Segment2, p: Coordinate): boolean {
+  const dirX = seg.target.x - seg.source.x;
+  const dirY = seg.target.y - seg.source.y;
+  const vx = p.x - seg.source.x;
+  const vy = p.y - seg.source.y;
+  const cross = dirX * vy - dirY * vx;
+  return cross > 0;
+}
+
+// Rotation: align direction to +x, and invert later
+function rotateCoordByDir(p: Coordinate, dir: Direction2, invert = false): Coordinate {
+  const len = Math.hypot(dir.dx, dir.dy);
+  if (len < EPS) return cloneCoord(p);
+  const cosTheta = dir.dx / len;
+  const sinTheta = dir.dy / len;
+
+  if (!invert) {
+    // rotate by -theta
+    return new Coordinate(
+      p.x * cosTheta + p.y * sinTheta,
+      -p.x * sinTheta + p.y * cosTheta,
+    );
+  } else {
+    // rotate by +theta
+    return new Coordinate(
+      p.x * cosTheta - p.y * sinTheta,
+      p.x * sinTheta + p.y * cosTheta,
+    );
+  }
+}
+
+function rotatePolygonWithHoles(
+  pwh: PolygonWithHoles,
+  dir: Direction2,
+  invert = false,
+): PolygonWithHoles {
+  return {
+    outer: pwh.outer.map((p) => rotateCoordByDir(p, dir, invert)),
+    holes: pwh.holes.map((hole) => hole.map((p) => rotateCoordByDir(p, dir, invert))),
+  };
+}
+
+function rotatePolygonBack(poly: Coordinate[], dir: Direction2): Coordinate[] {
+  return poly.map((p) => rotateCoordByDir(p, dir, true));
+}
+
+// Segment helpers
+function segmentFromCoords(a: Coordinate, b: Coordinate): Segment2 {
+  return { source: cloneCoord(a), target: cloneCoord(b) };
+}
+
+function segmentsEqual(a: Segment2, b: Segment2, eps = EPS): boolean {
+  return pointsEqual(a.source, b.source, eps) && pointsEqual(a.target, b.target, eps);
+}
+
+function segmentsEqualIgnoringOrientation(a: Segment2, b: Segment2, eps = EPS): boolean {
+  return (
+    segmentsEqual(a, b, eps) ||
+    (pointsEqual(a.source, b.target, eps) && pointsEqual(a.target, b.source, eps))
+  );
+}
+
+// Convert JSTS Polygon -> PolygonWithHoles (without duplicated closing coord)
+function jstsPolygonToPwh(poly: Polygon): PolygonWithHoles {
+  const outerRing = poly.getExteriorRing();
+  const outer: Coordinate[] = [];
+  const outerCount = outerRing.getNumPoints() - 1; // skip duplicate last
+  for (let i = 0; i < outerCount; i++) {
+    const c = outerRing.getCoordinateN(i);
+    outer.push(new Coordinate(c.x, c.y));
+  }
+
+  const holes: Coordinate[][] = [];
+  const numHoles = poly.getNumInteriorRing();
+  for (let h = 0; h < numHoles; h++) {
+    const ring = poly.getInteriorRingN(h);
+    const ringCoords: Coordinate[] = [];
+    const cnt = ring.getNumPoints() - 1;
+    for (let i = 0; i < cnt; i++) {
+      const c = ring.getCoordinateN(i);
+      ringCoords.push(new Coordinate(c.x, c.y));
+    }
+    holes.push(ringCoords);
+  }
+
+  return { outer, holes };
+}
+
+// Convert Coordinate[] (open ring) -> JSTS Polygon (closed ring)
+function coordsToJstsPolygon(coords: Coordinate[], gf: GeometryFactory): Polygon | null {
+  if (coords.length < 3) return null;
+  const closed: Coordinate[] = coords.map(cloneCoord);
+  const first = closed[0];
+  const last = closed[closed.length - 1];
+  if (!pointsEqual(first, last)) {
+    closed.push(cloneCoord(first));
+  }
+  const shell = gf.createLinearRing(closed);
+  return gf.createPolygon(shell);
+}
+
+// PWH utilities with VertexRef
+
+function getPoint(pwh: PolygonWithHoles, v: VertexRef): Coordinate {
+  if (v.ring === 'outer') {
+    return pwh.outer[v.index];
+  } else {
+    if (v.holeIndex == null) throw new Error('holeIndex missing for hole vertex');
+    return pwh.holes[v.holeIndex][v.index];
+  }
+}
+
+function numVerticesInRing(pwh: PolygonWithHoles, v: VertexRef): number {
+  return v.ring === 'outer' ? pwh.outer.length : pwh.holes[v.holeIndex!].length;
+}
+
+function prevVertexRef(pwh: PolygonWithHoles, v: VertexRef): VertexRef {
+  const n = numVerticesInRing(pwh, v);
+  const idx = (v.index - 1 + n) % n;
+  return { ...v, index: idx };
+}
+
+function nextVertexRef(pwh: PolygonWithHoles, v: VertexRef): VertexRef {
+  const n = numVerticesInRing(pwh, v);
+  const idx = (v.index + 1) % n;
+  return { ...v, index: idx };
+}
+
+function verticesEqualRef(a: VertexRef, b: VertexRef): boolean {
+  return (
+    a.ring === b.ring &&
+    a.index === b.index &&
+    (a.ring === 'outer' || a.holeIndex === b.holeIndex)
+  );
+}
+
+// sortPolygon: outer CCW, holes CW
+function sortPolygon(pwh: PolygonWithHoles): void {
+  if (isClockwise(pwh.outer)) {
+    pwh.outer.reverse();
+  }
+  for (const hole of pwh.holes) {
+    if (!isClockwise(hole)) {
+      hole.reverse();
+    }
+  }
+}
+
+// cleanupPolygon: drop duplicate consecutive vertices, then simple + non-zero area
+function cleanupPolygon(poly: Coordinate[]): boolean {
+  if (poly.length === 0) return false;
+
+  let eraseOne = true;
+  while (eraseOne && poly.length > 1) {
+    eraseOne = false;
+    const n = poly.length;
+    for (let i = 0; i < n; i++) {
+      const j = (i + 1) % n;
+      if (pointsEqual(poly[i], poly[j])) {
+        poly.splice(j, 1);
+        eraseOne = true;
+        break;
       }
-      if (extreme.direction === 'BOTH' || extreme.direction === 'RIGHT') {
-        const p1 = new Coordinate(p.x + eps, p.y);
-        const p2 = new Coordinate(this.envelope.getMaxX(), p.y);
-        const lineString = geometryFactory.createLineString([p1, p2]);
-        let minDistance = Infinity;
-        let minShapeIndex: number | undefined = undefined;
-        let minLengthIndex: number | undefined = undefined;
-        for (let i = 0; i < this.boundaryData.length; i++) {
-          const intersection = OverlayOp.overlayOp(
-            this.boundaryData[i].ring,
-            lineString,
-            OverlayOp.INTERSECTION,
-          );
-          const points: Point[] = PointExtracter.getPoints(intersection).array;
-          const coords: Coordinate[] = points.map((v: Point) => v.getCoordinate());
-          for (const coord of coords) {
-            const distance = coord.distance(p);
-            if (distance < minDistance) {
-              minDistance = distance;
-              minShapeIndex = i;
-              minLengthIndex = this.boundaryData[i].lengthIndex.project(coord);
-            }
+    }
+  }
+
+  const area = polygonSignedArea(poly);
+  if (almostEqual(area, 0)) return false;
+  if (!polygonIsSimple(poly)) return false;
+  return true;
+}
+
+// outOfPWH: outside outer OR inside a hole
+function outOfPWH(pwh: PolygonWithHoles, p: Coordinate): boolean {
+  if (!pointInPolygon(pwh.outer, p)) return true;
+  for (const hole of pwh.holes) {
+    if (pointInPolygon(hole, p)) return true;
+  }
+  return false;
+}
+
+// Placeholder for simplification.
+function simplifyPolygon(_pwh: PolygonWithHoles): void {
+  // no-op; hook for your own simplification
+}
+
+// Sorting vertices by x,y
+function getXSortedVertices(p: PolygonWithHoles): VertexRef[] {
+  const sorted: VertexRef[] = [];
+
+  for (let i = 0; i < p.outer.length; i++) {
+    sorted.push({ ring: 'outer', index: i });
+  }
+
+  for (let h = 0; h < p.holes.length; h++) {
+    const hole = p.holes[h];
+    for (let i = 0; i < hole.length; i++) {
+      sorted.push({ ring: 'hole', holeIndex: h, index: i });
+    }
+  }
+
+  sorted.sort((a, b) => {
+    const pa = getPoint(p, a);
+    const pb = getPoint(p, b);
+    if (!almostEqual(pa.x, pb.x)) return pa.x - pb.x;
+    return pa.y - pb.y;
+  });
+
+  return sorted;
+}
+
+// Intersections between vertical line x = x0 and segments in L
+function intersectSegmentWithVerticalLine(seg: Segment2, x0: number): Coordinate | null {
+  const a = seg.source;
+  const b = seg.target;
+
+  if (almostEqual(a.x, b.x) && almostEqual(a.x, x0)) {
+    return cloneCoord(b);
+  }
+
+  if (almostEqual(a.x, b.x)) {
+    return null;
+  }
+
+  const minX = Math.min(a.x, b.x) - EPS;
+  const maxX = Math.max(a.x, b.x) + EPS;
+  if (x0 < minX || x0 > maxX) return null;
+
+  const t = (x0 - a.x) / (b.x - a.x);
+  if (t < -EPS || t > 1 + EPS) return null;
+
+  const y = a.y + t * (b.y - a.y);
+  return new Coordinate(x0, y);
+}
+
+function getIntersections(L: Segment2[], x0: number): Coordinate[] {
+  const intersections: Coordinate[] = [];
+  for (const seg of L) {
+    const res = intersectSegmentWithVerticalLine(seg, x0);
+    if (!res) {
+      console.warn('No intersection found for segment with vertical line');
+      intersections.push(cloneCoord(seg.target));
+    } else {
+      intersections.push(res);
+    }
+  }
+  return intersections;
+}
+
+// === processEvent ===
+// This is a mostly 1:1 port of the previous TS version, with Coordinates/JSTS types.
+
+function processEvent(
+  pwh: PolygonWithHoles,
+  v: VertexRef,
+  sortedVertices: VertexRef[],
+  processedVertices: Coordinate[],
+  L: Segment2[],
+  openPolygons: Coordinate[][],
+  closedPolygons: Coordinate[][],
+): void {
+  const vPoint = getPoint(pwh, v);
+  const intersections = getIntersections(L, vPoint.x);
+
+  // e_prev/e_next from v to neighbors on ring
+  let vPrev = prevVertexRef(pwh, v);
+  let vNext = nextVertexRef(pwh, v);
+  let e_prev: Segment2 = segmentFromCoords(vPoint, getPoint(pwh, vPrev));
+  let e_next: Segment2 = segmentFromCoords(vPoint, getPoint(pwh, vNext));
+
+  // Correct vertical edges
+  if (equalX(e_prev.source, e_prev.target)) {
+    const vPrev2 = prevVertexRef(pwh, vPrev);
+    e_prev = segmentFromCoords(getPoint(pwh, vPrev), getPoint(pwh, vPrev2));
+  } else if (equalX(e_next.source, e_next.target)) {
+    const vNext2 = nextVertexRef(pwh, vNext);
+    e_next = segmentFromCoords(getPoint(pwh, vNext), getPoint(pwh, vNext2));
+  }
+
+  let e_lower: Segment2 = { ...e_prev };
+  let e_upper: Segment2 = { ...e_next };
+
+  // OUT event
+  if (lessX(e_prev.target, e_prev.source) && lessX(e_next.target, e_next.source)) {
+    const p_on_upper = pointsEqual(e_lower.source, e_upper.source)
+      ? e_upper.target
+      : e_upper.source;
+    if (segmentHasOnPositiveSide(e_lower, p_on_upper)) {
+      const tmp = e_lower;
+      e_lower = e_upper;
+      e_upper = tmp;
+    }
+
+    const epsPoint = new Coordinate(vPoint.x + 1e-6, vPoint.y);
+    const close_one = outOfPWH(pwh, epsPoint);
+
+    let e_lower_id = -1;
+    for (let i = 0; i < L.length; i++) {
+      if (segmentsEqualIgnoringOrientation(L[i], e_lower)) {
+        e_lower_id = i;
+        break;
+      }
+    }
+    if (e_lower_id < 0) throw new Error('e_lower not found in L');
+    const e_upper_id = e_lower_id + 1;
+    const lower_cell_id = Math.floor(e_lower_id / 2);
+    const upper_cell_id = Math.floor(e_upper_id / 2);
+
+    if (close_one) {
+      const cellIndex = lower_cell_id;
+      const cell = openPolygons[cellIndex];
+      cell.push(cloneCoord(e_lower.source));
+      if (!pointsEqual(e_lower.source, e_upper.source)) {
+        cell.push(cloneCoord(e_upper.source));
+      }
+
+      if (cleanupPolygon(cell)) {
+        closedPolygons.push(clonePolygonCoords(cell));
+      }
+
+      L.splice(e_upper_id, 1);
+      L.splice(e_lower_id, 1);
+      openPolygons.splice(cellIndex, 1);
+    } else {
+      if (intersections.length <= e_upper_id + 1) {
+        throw new Error('Not enough intersections for close_two branch');
+      }
+
+      const lower_cell = openPolygons[lower_cell_id];
+      const upper_cell = openPolygons[upper_cell_id];
+
+      lower_cell.push(cloneCoord(intersections[e_lower_id - 1]));
+      lower_cell.push(cloneCoord(intersections[e_lower_id]));
+      if (cleanupPolygon(lower_cell)) {
+        closedPolygons.push(clonePolygonCoords(lower_cell));
+      }
+
+      upper_cell.push(cloneCoord(intersections[e_upper_id]));
+      upper_cell.push(cloneCoord(intersections[e_upper_id + 1]));
+      if (cleanupPolygon(upper_cell)) {
+        closedPolygons.push(clonePolygonCoords(upper_cell));
+      }
+
+      L.splice(e_upper_id, 1);
+      L.splice(e_lower_id, 1);
+
+      const newPolygon: Coordinate[] = [];
+      newPolygon.push(cloneCoord(intersections[e_upper_id + 1]));
+      newPolygon.push(cloneCoord(intersections[e_lower_id - 1]));
+      openPolygons.splice(lower_cell_id, 0, newPolygon);
+
+      const removeIndices = [lower_cell_id + 1, upper_cell_id + 1].sort((a, b) => b - a);
+      for (const idx of removeIndices) {
+        openPolygons.splice(idx, 1);
+      }
+    }
+
+    processedVertices.push(cloneCoord(e_lower.source));
+    if (!pointsEqual(e_lower.source, e_upper.source)) {
+      processedVertices.push(cloneCoord(e_upper.source));
+    }
+  }
+
+  // IN event
+  else if (
+    !lessX(e_lower.target, e_lower.source) &&
+    !lessX(e_upper.target, e_upper.source)
+  ) {
+    const p_on_lower = pointsEqual(e_lower.source, e_upper.source)
+      ? e_lower.target
+      : e_lower.source;
+    if (segmentHasOnPositiveSide(e_upper, p_on_lower)) {
+      const tmp = e_lower;
+      e_lower = e_upper;
+      e_upper = tmp;
+    }
+
+    const epsPoint = new Coordinate(vPoint.x - 1e-6, vPoint.y);
+    const open_one = outOfPWH(pwh, epsPoint);
+
+    let e_LOWER_id = 0;
+    let found_e_lower_id = false;
+    if (intersections.length >= 2) {
+      for (let i = 0; i < intersections.length - 1; i += 2) {
+        if (open_one) {
+          if (
+            lessY(intersections[i], e_lower.source) &&
+            lessY(intersections[i + 1], e_upper.source)
+          ) {
+            e_LOWER_id = i;
+            found_e_lower_id = true;
           }
-        }
-        if (minShapeIndex !== undefined && minLengthIndex !== undefined) {
-          newNodeLengthIndices[minShapeIndex].push(minLengthIndex);
+        } else {
+          if (
+            lessY(intersections[i], e_lower.source) &&
+            lessY(e_upper.source, intersections[i + 1])
+          ) {
+            e_LOWER_id = i;
+          }
         }
       }
     }
 
-    const nodedBoundaries: LinearRing[] = [];
-    for (let i = 0; i < this.boundaryData.length; i++) {
-      if (newNodeLengthIndices[i].length > 0) {
-        newNodeLengthIndices[i].sort((a, b) => a - b);
-        const coords = this.boundaryData[i].ring.getCoordinates().slice();
-        for (let j = newNodeLengthIndices[i].length - 1; j >= 0; j--) {
-          const location: LinearLocation = this.boundaryData[
-            i
-          ].lengthLocationMap.getLocation(newNodeLengthIndices[i][j]);
-          const fraction = location.getSegmentFraction();
-          if (fraction > eps && fraction < 1 - eps) {
-            const coord = this.boundaryData[i].lengthIndex.extractPoint(
-              newNodeLengthIndices[i][j],
-            );
-            coords.splice(location.getSegmentIndex() + 1, 0, coord);
-          }
-        }
-        nodedBoundaries.push(geometryFactory.createLinearRing(coords));
+    if (open_one) {
+      let openCellIndex = 0;
+      if (L.length > 0 && found_e_lower_id) {
+        openCellIndex = Math.floor(e_LOWER_id / 2) + 1;
+      }
+
+      if (L.length === 0) {
+        L.push({ ...e_lower }, { ...e_upper });
+      } else if (L.length > 0 && !found_e_lower_id) {
+        L.unshift({ ...e_upper });
+        L.unshift({ ...e_lower });
       } else {
-        nodedBoundaries.push(this.boundaryData[i].ring);
+        const inserterIndex = e_LOWER_id + 1;
+        L.splice(inserterIndex + 1, 0, { ...e_lower }, { ...e_upper });
       }
+
+      const openPolygon: Coordinate[] = [];
+      openPolygon.push(cloneCoord(e_upper.source));
+      if (!pointsEqual(e_lower.source, e_upper.source)) {
+        openPolygon.push(cloneCoord(e_lower.source));
+      }
+      openPolygons.splice(openCellIndex, 0, openPolygon);
+    } else {
+      const e_LOWER = L[e_LOWER_id];
+      if (!e_LOWER) throw new Error('e_LOWER not found in L');
+      const cellIndex = Math.floor(e_LOWER_id / 2);
+      const cell = openPolygons[cellIndex];
+      if (!cell) throw new Error('Cell not found in openPolygons');
+
+      L.splice(e_LOWER_id + 1, 0, { ...e_lower }, { ...e_upper });
+
+      cell.push(cloneCoord(intersections[e_LOWER_id]));
+      cell.push(cloneCoord(intersections[e_LOWER_id + 1]));
+      if (cleanupPolygon(cell)) {
+        closedPolygons.push(clonePolygonCoords(cell));
+      }
+
+      const newPolygonLower: Coordinate[] = [];
+      newPolygonLower.push(cloneCoord(e_lower.source));
+      newPolygonLower.push(cloneCoord(intersections[e_LOWER_id]));
+
+      const newPolygonUpper: Coordinate[] = [];
+      newPolygonUpper.push(cloneCoord(intersections[e_LOWER_id + 1]));
+      newPolygonUpper.push(cloneCoord(e_upper.source));
+
+      openPolygons.splice(cellIndex, 1, newPolygonUpper);
+      openPolygons.splice(cellIndex, 0, newPolygonLower);
     }
 
-    return nodedBoundaries;
-  }
-
-  getHatchLines(rowSpacingPx: number): LineString[] {
-    const lineStrings: LineString[] = [];
-    const [xMin, yMin] = [
-      this.envelope.getMinX() - rowSpacingPx,
-      this.envelope.getMinY() - rowSpacingPx,
-    ];
-    const [xMax, yMax] = [
-      this.envelope.getMaxX() + rowSpacingPx,
-      this.envelope.getMaxY() + rowSpacingPx,
-    ];
-    for (let i = 0, y = yMin; y <= yMax; y += rowSpacingPx) {
-      lineStrings.push(
-        geometryFactory.createLineString([
-          new Coordinate(xMin, y),
-          new Coordinate(xMax, y),
-        ]),
-      );
+    processedVertices.push(cloneCoord(e_lower.source));
+    if (!pointsEqual(e_lower.source, e_upper.source)) {
+      processedVertices.push(cloneCoord(e_upper.source));
     }
-    return lineStrings;
   }
 
-  getCuts(eps = 1e-7): { origin: BoundaryProjection; cuts: BoundaryProjection[] }[] {
-    const cuts: { origin: BoundaryProjection; cuts: BoundaryProjection[] }[] = [];
-    for (let i = 0; i < this.boundaryData.length; i++) {
-      for (let j = 0, n = this.boundaryData[i].ring.getNumPoints() - 1; j <= n; j++) {
-        const prev = this.boundaryData[i].ring.getCoordinateN((j + 0) % n);
-        const curr = this.boundaryData[i].ring.getCoordinateN((j + 1) % n);
-        const next = this.boundaryData[i].ring.getCoordinateN((j + 2) % n);
-        const n1 = new Coordinate(curr.x - prev.x, curr.y - prev.y);
-        const n2 = new Coordinate(curr.x - next.x, curr.y - next.y);
-        const cross = n1.x * n2.y - n1.y * n2.x;
-        if (Math.sign(curr.y - prev.y) === Math.sign(curr.y - next.y)) {
-          if (cross > 0) {
-            const leftCutLine = geometryFactory.createLineString([
-              new Coordinate(this.envelope.getMinX(), curr.y),
-              new Coordinate(curr.x - eps, curr.y),
-            ]);
-            const rightCutLine = geometryFactory.createLineString([
-              new Coordinate(curr.x + eps, curr.y),
-              new Coordinate(this.envelope.getMaxX(), curr.y),
-            ]);
-            const leftIntersections: Coordinate[] = [];
-            const rightIntersections: Coordinate[] = [];
-            for (const boundary of this.boundaryData) {
-              const leftOp = OverlayOp.overlayOp(
-                boundary.ring,
-                leftCutLine,
-                OverlayOp.INTERSECTION,
-              );
-              const rightOp = OverlayOp.overlayOp(
-                boundary.ring,
-                rightCutLine,
-                OverlayOp.INTERSECTION,
-              );
-              leftIntersections.push(
-                ...PointExtracter.getPoints(leftOp).array.map((p: Point) =>
-                  p.getCoordinate(),
-                ),
-              );
-              rightIntersections.push(
-                ...PointExtracter.getPoints(rightOp).array.map((p: Point) =>
-                  p.getCoordinate(),
-                ),
-              );
+  // Degenerate / vertical / special cases
+  else {
+    let v_middle: VertexRef = { ...v };
+    let foundEdgeIndex = -1;
+
+    while (foundEdgeIndex === -1) {
+      for (let i = 0; i < L.length; i++) {
+        const seg = L[i];
+        if (
+          pointsEqual(getPoint(pwh, v_middle), seg.source) ||
+          pointsEqual(getPoint(pwh, v_middle), seg.target)
+        ) {
+          foundEdgeIndex = i;
+
+          if (!pointsEqual(getPoint(pwh, v_middle), vPoint)) {
+            let i_v = -1;
+            let i_v_middle = -1;
+            for (let k = 0; k < sortedVertices.length; k++) {
+              if (verticesEqualRef(sortedVertices[k], v)) i_v = k;
+              if (verticesEqualRef(sortedVertices[k], v_middle)) i_v_middle = k;
             }
-            leftIntersections.sort((a, b) => b.x - a.x);
-            const leftProjection = this.projectCoordinateToBoundary(leftIntersections[0]);
-            rightIntersections.sort((a, b) => a.x - b.x);
-            const rightProjection = this.projectCoordinateToBoundary(
-              rightIntersections[0],
-            );
-            if (leftProjection && rightProjection) {
-              cuts.push({
-                origin: {
-                  shapeIndex: i,
-                  locationIndex: new LinearLocation((j + 1) % n, 0),
-                  coordinate: curr,
-                },
-                cuts: [leftProjection, rightProjection],
-              });
+            if (i_v === -1 || i_v_middle === -1) {
+              throw new Error('Vertices not found in sortedVertices');
             }
+            const tmp = sortedVertices[i_v];
+            sortedVertices[i_v] = sortedVertices[i_v_middle];
+            sortedVertices[i_v_middle] = tmp;
           }
-        } else if (Math.abs(curr.y - prev.y) < eps && Math.abs(curr.y - next.y) > eps) {
-          if (cross > 0) {
-            const cutLine =
-              curr.x < prev.x
-                ? geometryFactory.createLineString([
-                    new Coordinate(this.envelope.getMinX(), curr.y),
-                    new Coordinate(curr.x - eps, curr.y),
-                  ])
-                : geometryFactory.createLineString([
-                    new Coordinate(curr.x + eps, curr.y),
-                    new Coordinate(this.envelope.getMaxX(), curr.y),
-                  ]);
-            const intersections: Coordinate[] = [];
-            for (const boundary of this.boundaryData) {
-              const op = OverlayOp.overlayOp(
-                boundary.ring,
-                cutLine,
-                OverlayOp.INTERSECTION,
-              );
-              intersections.push(
-                ...PointExtracter.getPoints(op).array.map((p: Point) =>
-                  p.getCoordinate(),
-                ),
-              );
-            }
-            intersections.sort((a, b) => a.x - b.x);
-            const projection = this.projectCoordinateToBoundary(intersections[0]);
-            if (projection) {
-              cuts.push({
-                origin: {
-                  shapeIndex: i,
-                  locationIndex: new LinearLocation((j + 1) % n, 0),
-                  coordinate: curr,
-                },
-                cuts: [projection],
-              });
-            }
-          }
-        } else if (Math.abs(curr.y - next.y) < eps && Math.abs(curr.y - prev.y) > eps) {
-          if (cross > 0) {
-            const cutLine =
-              curr.x < next.x
-                ? geometryFactory.createLineString([
-                    new Coordinate(this.envelope.getMinX(), curr.y),
-                    new Coordinate(curr.x - eps, curr.y),
-                  ])
-                : geometryFactory.createLineString([
-                    new Coordinate(curr.x + eps, curr.y),
-                    new Coordinate(this.envelope.getMaxX(), curr.y),
-                  ]);
-            const intersections: Coordinate[] = [];
-            for (const boundary of this.boundaryData) {
-              const op = OverlayOp.overlayOp(
-                boundary.ring,
-                cutLine,
-                OverlayOp.INTERSECTION,
-              );
-              intersections.push(
-                ...PointExtracter.getPoints(op).array.map((p: Point) =>
-                  p.getCoordinate(),
-                ),
-              );
-            }
-            intersections.sort((a, b) => b.x - a.x);
-            const projection = this.projectCoordinateToBoundary(intersections[0]);
-            if (projection) {
-              cuts.push({
-                origin: {
-                  shapeIndex: i,
-                  locationIndex: new LinearLocation((j + 1) % n, 0),
-                  coordinate: curr,
-                },
-                cuts: [projection],
-              });
-            }
-          }
+          break;
         }
       }
-    }
-    return cuts;
-  }
 
-  // // 0----------1
-  // // |          |
-  // // |     /----2
-  // // 5----/     |
-  // // |          |
-  // // 4----------3
-  // test(): Polygon[] {
-  //   const [xMin, yMin, xMax, yMax] = [10, 10, 390, 390];
-  //   const nodes = [
-  //     new Coordinate(xMin, yMin),
-  //     new Coordinate(xMax, yMin),
-  //     new Coordinate(xMax, 0.4 * yMin + 0.6 * yMax),
-  //     new Coordinate(xMax, yMax),
-  //     new Coordinate(xMin, yMax),
-  //     new Coordinate(xMin, 0.6 * yMin + 0.4 * yMax),
-  //   ];
-  //   const adjacency = new Map([
-  //     [0, [1, 5]],
-  //     [1, [0, 2]],
-  //     [2, [1, 3, 5]],
-  //     [3, [2, 4]],
-  //     [4, [3, 5]],
-  //     [5, [0, 2, 4]],
-  //   ]);
-  //   return getFacesFromGraph(nodes, adjacency);
-  // }
+      if (foundEdgeIndex === -1) {
+        const v_prev_m = prevVertexRef(pwh, v_middle);
+        const v_next_m = nextVertexRef(pwh, v_middle);
+        const p_prev = getPoint(pwh, v_prev_m);
+        const p_next = getPoint(pwh, v_next_m);
+        const p_mid = getPoint(pwh, v_middle);
 
-  getFacesFromGraph(nodes: Coordinate[], adjacency: Map<number, number[]>): Polygon[] {
-    const vertexMap = new Map<number, Coordinate>(nodes.map((c, i) => [i, c]));
-
-    const edgeMap = new Map<string, string>();
-    for (const [src, neighbors] of adjacency.entries()) {
-      if (vertexMap.has(src)) {
-        for (const dst of neighbors) {
-          if (vertexMap.has(dst)) {
-            if (src < dst) {
-              edgeMap.set(`${src},${dst}`, '');
-              edgeMap.set(`${dst},${src}`, '');
-            }
-          }
+        if (!almostEqual(p_prev.x, p_mid.x) && !almostEqual(p_next.x, p_mid.x)) {
+          throw new Error('Unexpected configuration for v_middle chain');
+        }
+        if (almostEqual(p_prev.x, p_mid.x)) {
+          v_middle = v_prev_m;
+        } else {
+          v_middle = v_next_m;
         }
       }
     }
 
-    const angleABC = (a: Coordinate, b: Coordinate, c: Coordinate): number => {
-      const [bax, bay] = [a.x - b.x, a.y - b.y];
-      const [bcx, bcy] = [c.x - b.x, c.y - b.y];
-      return Math.atan2(-(bax * bcy - bay * bcx), -(bax * bcx + bay * bcy)) + Math.PI;
+    const p_middle = getPoint(pwh, v_middle);
+    const p_prev_m = getPoint(pwh, prevVertexRef(pwh, v_middle));
+    const p_next_m = getPoint(pwh, nextVertexRef(pwh, v_middle));
+
+    const e_prev_m = segmentFromCoords(p_middle, p_prev_m);
+    const e_next_m = segmentFromCoords(p_middle, p_next_m);
+
+    let edge_id = -1;
+    let new_edge: Segment2 | null = null;
+    for (let i = 0; i < L.length; i++) {
+      const seg = L[i];
+      if (segmentsEqualIgnoringOrientation(seg, e_next_m)) {
+        new_edge = e_prev_m;
+        edge_id = i;
+        break;
+      } else if (segmentsEqualIgnoringOrientation(seg, e_prev_m)) {
+        new_edge = e_next_m;
+        edge_id = i;
+        break;
+      }
+    }
+
+    if (edge_id === -1 || !new_edge) {
+      throw new Error('Old edge not found in L during degenerate branch');
+    }
+
+    const cell_id = Math.floor(edge_id / 2);
+    const cell = openPolygons[cell_id];
+    if (!cell) throw new Error('Cell not found in degenerate branch');
+
+    if (edge_id % 2 === 0) {
+      cell.push(cloneCoord(new_edge.source));
+    } else {
+      cell.unshift(cloneCoord(new_edge.source));
+    }
+
+    L.splice(edge_id, 1, { ...new_edge });
+
+    processedVertices.push(cloneCoord(p_middle));
+  }
+}
+
+// === Top-level JSTS API ===
+
+export function computeBCD_JSTS(
+  polygon_in: Polygon,
+  dir: Direction2,
+  geometryFactory: GeometryFactory,
+): Polygon[] {
+  let pwh = jstsPolygonToPwh(polygon_in);
+
+  // Rotate, sort, simplify
+  pwh = rotatePolygonWithHoles(pwh, dir, false);
+  sortPolygon(pwh);
+  simplifyPolygon(pwh);
+
+  const sorted_vertices = getXSortedVertices(pwh);
+  const L: Segment2[] = [];
+  const open_polygons: Coordinate[][] = [];
+  const closed_polygons: Coordinate[][] = [];
+  const processed_vertices: Coordinate[] = [];
+
+  for (const v of sorted_vertices) {
+    const p = getPoint(pwh, v);
+    if (processed_vertices.some((q) => pointsEqual(q, p))) continue;
+
+    processEvent(
+      pwh,
+      v,
+      sorted_vertices,
+      processed_vertices,
+      L,
+      open_polygons,
+      closed_polygons,
+    );
+  }
+
+  // Rotate back and convert to JSTS polygons
+  const result: Polygon[] = [];
+  for (const polyCoords of closed_polygons) {
+    const rotated = rotatePolygonBack(polyCoords, dir);
+    if (cleanupPolygon(rotated)) {
+      const jstsPoly = coordsToJstsPolygon(rotated, geometryFactory);
+      if (jstsPoly) result.push(jstsPoly);
+    }
+  }
+
+  return result;
+}
+
+
+
+
+type Point = { x: number; y: number };
+
+type Trapezoid = {
+  top: [Point, Point];     // left → right
+  bottom: [Point, Point];  // left → right
+};
+
+function rotatePoint(p: Point, angle: number): Point {
+  const c = Math.cos(angle);
+  const s = Math.sin(angle);
+  return {
+    x: c * p.x - s * p.y,
+    y: s * p.x + c * p.y
+  };
+}
+
+function rotatePolygon(poly: Point[], angle: number): Point[] {
+  return poly.map(p => rotatePoint(p, angle));
+}
+
+function intersectSegmentWithY(
+  a: Point,
+  b: Point,
+  y: number
+): number | null {
+  if ((y < a.y && y < b.y) || (y > a.y && y > b.y)) return null;
+  if (Math.abs(a.y - b.y) < 1e-9) return null;
+
+  const t = (y - a.y) / (b.y - a.y);
+  return a.x + t * (b.x - a.x);
+}
+
+function intersectPolygonWithY(
+  polygon: Point[],
+  y: number
+): number[] {
+  const xs: number[] = [];
+  const n = polygon.length;
+
+  for (let i = 0; i < n; i++) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % n];
+    const x = intersectSegmentWithY(a, b, y);
+    if (x !== null) xs.push(x);
+  }
+
+  xs.sort((a, b) => a - b);
+  return xs;
+}
+
+export function trapezoidalDecompositionMonotoneAngle(
+  polygon: Point[],
+  angle: number
+): Trapezoid[] {
+
+  // 1. Rotate polygon so sweep direction becomes vertical
+  const rotated = rotatePolygon(polygon, -angle);
+
+  // 2. Collect unique y-levels
+  const ys = Array.from(
+    new Set(rotated.map(p => p.y))
+  ).sort((a, b) => b - a);
+
+  const trapezoids: Trapezoid[] = [];
+
+  for (let i = 0; i < ys.length - 1; i++) {
+    const yTop = ys[i];
+    const yBot = ys[i + 1];
+    if (Math.abs(yTop - yBot) < 1e-9) continue;
+
+    const yMidTop = yTop - 1e-6;
+    const yMidBot = yBot + 1e-6;
+
+    const xsTop = intersectPolygonWithY(rotated, yMidTop);
+    const xsBot = intersectPolygonWithY(rotated, yMidBot);
+
+    if (xsTop.length !== 2 || xsBot.length !== 2) {
+      throw new Error("Polygon is not monotone in given direction");
+    }
+
+    const trapRotated: Trapezoid = {
+      top: [
+        { x: xsTop[0], y: yTop },
+        { x: xsTop[1], y: yTop }
+      ],
+      bottom: [
+        { x: xsBot[0], y: yBot },
+        { x: xsBot[1], y: yBot }
+      ]
     };
 
-    for (const [src, neighbors] of adjacency.entries()) {
-      const from = vertexMap.get(src);
-      if (from) {
-        for (const dst of neighbors) {
-          const to = vertexMap.get(dst);
-          if (to) {
-            if (edgeMap.has(`${src},${dst}`)) {
-              let minAngle: number | undefined = undefined;
-              let minEdge: string | undefined = undefined;
-              for (const nextNeighbor of adjacency.get(dst) ?? []) {
-                const next = vertexMap.get(nextNeighbor);
-                if (next && src !== nextNeighbor) {
-                  const angle = angleABC(from, to, next);
-                  if (minAngle === undefined || angle < minAngle) {
-                    minAngle = angle;
-                    minEdge = `${dst},${nextNeighbor}`;
-                  }
-                }
-              }
-              if (minEdge !== undefined) {
-                edgeMap.set(`${src},${dst}`, minEdge);
-              }
-            }
-          }
-        }
-      }
-    }
-
-    // collect the faces
-    const faces: Polygon[] = [];
-    const queue = new Set(edgeMap.keys());
-    while (queue.size > 0) {
-      let start = queue.values().next().value;
-      if (start) {
-        queue.delete(start);
-        const coords = [vertexMap.get(parseInt(start.split(',')[0])) ?? new Coordinate()];
-        let curr = edgeMap.get(start);
-        while (curr) {
-          if (queue.has(curr)) {
-            queue.delete(curr);
-          }
-          coords.push(vertexMap.get(parseInt(curr.split(',')[0])) ?? new Coordinate());
-          curr = edgeMap.get(curr);
-          if (curr === start) {
-            coords.push(coords[0]);
-            faces.push(geometryFactory.createPolygon(coords));
-            break;
-          }
-        }
-      }
-    }
-
-    return faces;
+    // 3. Rotate trapezoid back
+    trapezoids.push({
+      top: trapRotated.top.map(p => rotatePoint(p, angle)) as [Point, Point],
+      bottom: trapRotated.bottom.map(p => rotatePoint(p, angle)) as [Point, Point]
+    });
   }
+
+  return trapezoids;
 }
