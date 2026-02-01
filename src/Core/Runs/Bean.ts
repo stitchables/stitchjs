@@ -71,13 +71,15 @@ export class Bean implements IRun {
     const runStitches = this.run
       .getStitches(pixelsPerMm)
       .filter((s) => s.stitchType === StitchType.NORMAL)
-      .map(s => s.position);
+      .map((s) => s.position);
     for (let i = 0; i < runStitches.length - 1; i++) {
       const position = runStitches[i + 1];
       const repeatListPos = i % this.repeatsPattern.length;
       stitches.push(new Stitch(position, StitchType.NORMAL));
       for (let j = 0; j < this.repeatsPattern[repeatListPos]; j++) {
-        stitches.push(...stitches.slice(-2).map(s => new Stitch(s.position, StitchType.NORMAL)));
+        stitches.push(
+          ...stitches.slice(-2).map((s) => new Stitch(s.position, StitchType.NORMAL)),
+        );
       }
     }
 

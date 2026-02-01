@@ -19,5 +19,5 @@ export const Runs = {
   AutoSatin,
   DoubleRope,
   TripleRope,
-  Bean
+  Bean,
 };

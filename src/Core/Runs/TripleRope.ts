@@ -34,7 +34,11 @@ export class TripleRope implements IRun {
     if (prev === undefined || next === undefined) return new Vector(0, 0);
     if (Math.abs(curr.subtract(prev).cross(next.subtract(prev))) <= 0.00001)
       return curr.subtract(prev).normalized();
-    return curr.subtract(prev).normalized().add(next.subtract(curr).normalized()).normalized();
+    return curr
+      .subtract(prev)
+      .normalized()
+      .add(next.subtract(curr).normalized())
+      .normalized();
   }
 
   getStitches(pixelsPerMm: number): Stitch[] {

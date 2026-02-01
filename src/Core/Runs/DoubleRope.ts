@@ -34,7 +34,11 @@ export class DoubleRope implements IRun {
     if (prev === undefined || next === undefined) return new Vector(0, 0);
     if (Math.abs(curr.subtract(prev).cross(next.subtract(prev))) <= 0.00001)
       return curr.subtract(prev).normalized();
-    return curr.subtract(prev).normalized().add(next.subtract(curr).normalized()).normalized();
+    return curr
+      .subtract(prev)
+      .normalized()
+      .add(next.subtract(curr).normalized())
+      .normalized();
   }
 
   getStitches(pixelsPerMm: number): Stitch[] {
@@ -112,7 +116,8 @@ export class DoubleRope implements IRun {
       endProjLength,
     );
     if (
-      endExtract.getLength() > this.run.travelLengthMm * pixelsPerMm && endExtract.getNumPoints() > 1
+      endExtract.getLength() > this.run.travelLengthMm * pixelsPerMm &&
+      endExtract.getNumPoints() > 1
     ) {
       const endTravel = this.run.evenRunLine(
         endExtract,
