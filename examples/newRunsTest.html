@@ -1,0 +1,60 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>New Runs Test</title>
+  <script src="../dist/stitch.global.js"></script>
+  <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
+</head>
+
+<body>
+<script>
+  let pattern = new Stitch.Core.Pattern(400, 400);
+  let thread = pattern.addThread(0, 0, 0);
+
+  let vertices = [];
+  for (let i = 0; i < 10; i++) {
+    let x = Stitch.Math.Utils.map(Math.random(), 0, 1, 0, 400);
+    let y = Stitch.Math.Utils.map(Math.random(), 0, 1, 0, 400);
+    vertices.push(new Stitch.Math.Vector(x, y));
+  }
+  vertices.push(vertices[0]);
+
+  // thread.addRun(new Stitch.Core.Runs.DoubleRope(vertices, {
+  //   widthMm: 0.4,
+  //   startPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
+  //   endPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
+  // }));
+  // thread.addRun(new Stitch.Core.Runs.TripleRope(vertices, {
+  //   widthMm: 0.4,
+  //   startPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
+  //   endPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
+  // }));
+  thread.addRun(new Stitch.Core.Runs.Bean(vertices, {
+    startPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
+    endPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
+  }));
+
+  let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
+  canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+  document.body.append(canvas);
+
+  let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'patternFill', 10, 500);
+  document.body.appendChild(modal.container);
+  window.addEventListener('click', (e) => {
+    if (e.target === modal.container) modal.close();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyD') modal.open();
+  });
+
+  window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
+    canvas.remove();
+    canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
+    canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+    document.body.append(canvas);
+  }, 10));
+
+</script>
+</body>
+
+</html>

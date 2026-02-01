@@ -5,6 +5,9 @@ import { PatternFill } from './PatternFill';
 import { TatamiFill } from './TatamiFill';
 import { AutoFill } from './AutoFill';
 import { AutoSatin } from './AutoSatin';
+import { DoubleRope } from './DoubleRope';
+import { TripleRope } from './TripleRope';
+import { Bean } from './Bean';
 
 export const Runs = {
   Run,
@@ -14,4 +17,7 @@ export const Runs = {
   TatamiFill,
   AutoFill,
   AutoSatin,
+  DoubleRope,
+  TripleRope,
+  Bean
 };
