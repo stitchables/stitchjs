@@ -59,7 +59,6 @@ export class TripleRope implements IRun {
 
     // if necessary jump from start to start projection
     if (start.distance(startProjCoord) > pixelsPerMm) {
-      console.log('start jump');
       const startProjVec = new Vector(startProjCoord.x, startProjCoord.y);
       stitches.push(new Stitch(startProjVec, StitchType.JUMP));
     }
@@ -73,7 +72,6 @@ export class TripleRope implements IRun {
       startExtract.getLength() > this.run.travelLengthMm * pixelsPerMm &&
       startExtract.getNumPoints() > 1
     ) {
-      console.log('start travel');
       const startTravel = this.run.evenRunLine(
         startExtract,
         travelLengthPx,
@@ -127,7 +125,6 @@ export class TripleRope implements IRun {
       endExtract.getLength() > this.run.travelLengthMm * pixelsPerMm &&
       endExtract.getNumPoints() > 1
     ) {
-      console.log('end travel');
       const endTravel = this.run.evenRunLine(
         endExtract,
         travelLengthPx,
@@ -141,7 +138,6 @@ export class TripleRope implements IRun {
 
     // if necessary jump from end projection to end
     if (end.distance(endProjCoord) > pixelsPerMm) {
-      console.log('end jump');
       stitches.push(new Stitch(new Vector(end.x, end.y), StitchType.JUMP));
     }
 

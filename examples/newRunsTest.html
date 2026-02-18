@@ -29,7 +29,12 @@
   //   startPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
   //   endPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
   // }));
-  thread.addRun(new Stitch.Core.Runs.Bean(vertices, {
+  // thread.addRun(new Stitch.Core.Runs.Bean(vertices, {
+  //   startPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
+  //   endPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
+  // }));
+  thread.addRun(new Stitch.Core.Runs.EStitch(vertices, {
+    isFlipped: true,
     startPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
     endPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
   }));

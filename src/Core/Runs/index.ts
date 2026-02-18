@@ -8,6 +8,7 @@ import { AutoSatin } from './AutoSatin';
 import { DoubleRope } from './DoubleRope';
 import { TripleRope } from './TripleRope';
 import { Bean } from './Bean';
+import { EStitch } from './EStitch';
 
 export const Runs = {
   Run,
@@ -20,4 +21,5 @@ export const Runs = {
   DoubleRope,
   TripleRope,
   Bean,
+  EStitch,
 };
