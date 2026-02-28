@@ -29,6 +29,7 @@ import { Utils } from '../../Math/Utils';
 import { StitchType } from '../EStitchType';
 import MinPriorityQueue from '../../Optimize/MinPriorityQueue';
 import VWSimplifier from 'jsts/org/locationtech/jts/simplify/VWSimplifier';
+import { resample } from '../../Geometry/resample';
 
 export class AutoFill implements IRun {
   shell: Polyline;
@@ -845,9 +846,16 @@ export class AutoFill implements IRun {
             const c = travelSimplified.getCoordinateN(j);
             travel.addVertex(c.x, c.y);
           }
-          travel
-            .getRadialDistanceResampled(pixelsPerMm * this.travelStitchLengthMm)
-            .vertices.forEach((v) => stitches.push(new Coordinate(v.x, v.y)));
+          const resamp = resample(
+            this.geometryFactory.createLineString(
+              travel.vertices.map((v) => new Coordinate(v.x, v.y)),
+            ),
+            pixelsPerMm * this.travelStitchLengthMm,
+            pixelsPerMm,
+          );
+          for (let i = 0, n = resamp.getNumPoints(); i < n; i++) {
+            stitches.push(resamp.getCoordinateN(i));
+          }
         }
       }
     }
