@@ -1,0 +1,102 @@
+<!doctype html>
+<html>
+<head>
+  <title>Polygon Pathfinding</title>
+  <script src="../dist/stitch.global.js"></script>
+  <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
+  <script src="https://cdn.jsdelivr.net/npm/p5@1.11.5/lib/p5.js"></script>
+</head>
+<body>
+<script>
+
+  const shell = Stitch.Math.Polyline.fromArrays([
+    [102, 356], [24, 251], [32, 179], [84, 250], [58, 145], [80, 108], [127, 46],
+    [127, 102], [102, 140], [116, 164], [135, 188], [171, 151], [193, 106], [201, 73],
+    [233, 57], [232, 86], [225, 112], [240, 116], [256, 94], [279, 73], [320, 85],
+    [329, 118], [354, 173], [362, 228], [356, 266], [312, 211], [269, 190], [247, 206],
+    [227, 240], [228, 262], [243, 255], [246, 233], [256, 218], [282, 219], [312, 246],
+    [323, 268], [331, 301], [319, 325], [290, 356], [248, 362], [216, 357], [205, 337],
+    [199, 293], [189, 246], [172, 235], [152, 245], [139, 261], [138, 283], [146, 277],
+    [159, 257], [174, 256], [174, 274], [177, 302], [177, 336], [158, 358], [121, 366],
+    [102, 356]
+  ]);
+  // .getRounded(10);
+  const holes = [
+    [[142, 324], [142, 296], [121, 297], [108, 315], [125, 338], [142, 324]],
+    [[206, 139], [194, 150], [203, 166], [217, 146], [206, 139]],
+    [[234, 309], [234, 326], [260, 326], [286, 295], [286, 264], [254, 279], [234, 309]]
+  ].map(p => Stitch.Math.Polyline.fromArrays(p));
+
+  const polygon = { shell: shell.vertices, holes: holes.map(h => h.vertices) };
+  let start = { x: 39, y: 205 };
+  let end = { x: 293, y: 292 };
+  const pathOptions = {
+    minStep: 10,
+    maxStep: 40,
+    revisitRadius: 10,
+  };
+  let path = Stitch.Optimize.findPolygonPath(polygon, start, end, pathOptions);
+
+  console.log(path);
+
+  function setup() {
+    createCanvas(400, 400);
+  }
+
+  function draw() {
+    background(220);
+
+    stroke(0);
+    fill(255);
+    beginShape();
+    for (let v of shell.vertices) {
+      vertex(v.x, v.y);
+    }
+    for (let h of holes) {
+      beginContour();
+      for (let v of h.vertices) {
+        vertex(v.x, v.y);
+      }
+      endContour(CLOSE);
+    }
+    endShape(CLOSE);
+
+    stroke(0);
+    fill(0, 255, 0);
+    circle(start.x, start.y, 7);
+
+    stroke(0);
+    fill(255, 0, 0);
+    circle(end.x, end.y, 7);
+
+    stroke(0);
+    noFill();
+    beginShape();
+    for (const p of path) {
+      vertex(p.x, p.y);
+    }
+    endShape();
+
+  }
+
+  let target = "start";
+  function mousePressed() {
+    const dToStart = Math.hypot(start.x - mouseX, start.y - mouseY);
+    const dToEnd = Math.hypot(end.x - mouseX, end.y - mouseY);
+    if (dToStart < dToEnd) target = "start";
+    else target = "end";
+  }
+
+  function mouseDragged() {
+    if (target === "start") start = { x: mouseX, y: mouseY };
+    else end = { x: mouseX, y: mouseY };
+    path = Stitch.Optimize.findPolygonPath(polygon, start, end, pathOptions);
+  }
+
+  function mouseReleased() {
+    path = Stitch.Optimize.findPolygonPath(polygon, start, end, pathOptions);
+  }
+
+</script>
+</body>
+</html>

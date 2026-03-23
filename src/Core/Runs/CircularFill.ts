@@ -1,11 +1,8 @@
 import { IRun } from '../IRun';
-import { Polyline } from '../../Math/Polyline';
 import { Vector } from '../../Math/Vector';
 import {
   Coordinate,
   Envelope,
-  Geometry,
-  GeometryFactory,
   LinearRing,
   LineSegment,
   LineString,
@@ -13,194 +10,254 @@ import {
   Point,
   Polygon,
 } from 'jsts/org/locationtech/jts/geom';
-import { MinimumBoundingCircle } from 'jsts/org/locationtech/jts/algorithm';
+import DiscreteHausdorffDistance from 'jsts/org/locationtech/jts/algorithm/distance/DiscreteHausdorffDistance';
 import { OverlayOp } from 'jsts/org/locationtech/jts/operation/overlay';
-import { DistanceOp } from 'jsts/org/locationtech/jts/operation/distance';
-import { LengthIndexedLine } from 'jsts/org/locationtech/jts/linearref';
 import { LineStringExtracter } from 'jsts/org/locationtech/jts/geom/util';
+import { LengthIndexedLine } from 'jsts/org/locationtech/jts/linearref';
 import { GeometrySnapper } from 'jsts/org/locationtech/jts/operation/overlay/snap';
 import { STRtree } from 'jsts/org/locationtech/jts/index/strtree';
+import { DistanceOp } from 'jsts/org/locationtech/jts/operation/distance';
 import IndexedFacetDistance from 'jsts/org/locationtech/jts/operation/distance/IndexedFacetDistance';
-
-import * as graphlib from 'graphlib';
-import { Stitch } from '../Stitch';
-import { geometryFactory } from '../../util/jsts';
-import { Utils } from '../../Math/Utils';
-import { StitchType } from '../EStitchType';
-import MinPriorityQueue from '../../Optimize/MinPriorityQueue';
 import VWSimplifier from 'jsts/org/locationtech/jts/simplify/VWSimplifier';
+import LineMerger from 'jsts/org/locationtech/jts/operation/linemerge/LineMerger';
+import { geometryFactory } from '../../util/jsts';
+import { Stitch } from '../Stitch';
+import graphlib from 'graphlib';
+import { Polyline } from '../../Math/Polyline';
 import { resample } from '../../Geometry/resample';
+import MinPriorityQueue from '../../Optimize/MinPriorityQueue';
+import { Utils } from '../../Math/Utils';
 
-export class AutoFill implements IRun {
-  shell: Polyline;
-  holes: Polyline[];
-  angle: number;
-  rowSpacingMm: number;
-  fillPattern: {
-    rowOffsetMm: number;
-    rowPatternMm: number[];
-  }[] = [];
-  travelStitchLengthMm: number;
-  startPosition: Vector;
-  endPosition: Vector;
-  centerPosition: Vector;
-  underpath?: boolean;
+function vec2Coord(v: Vector): Coordinate {
+  return new Coordinate(v.x, v.y);
+}
 
-  geometryFactory: GeometryFactory;
+export class CircularFill implements IRun {
   polygon: Polygon;
-  boundary: Geometry;
-  boundingRadius: number;
-  shapeGeoms: {
+  startPosition: Coordinate;
+  endPosition: Coordinate;
+  centerPosition: Coordinate;
+  rowSpacingMm: number;
+  stitchLengthMm: number;
+  travelLengthMm: number;
+  travelToleranceMm: number;
+  underpath: Boolean;
+  indexedOutlines: {
     geometry: LinearRing;
     lengthIndexedLine: LengthIndexedLine;
   }[];
-
   constructor(
-    shell: Polyline,
-    holes: Polyline[],
-    angle: number,
-    rowSpacingMm: number,
-    fillPattern: {
-      rowOffsetMm: number;
-      rowPatternMm: number[];
-    }[],
-    travelStitchLengthMm: number,
-    startPosition: Vector,
-    endPosition: Vector,
-    centerPosition?: Vector,
-    underpath = true,
+    shell: Vector[],
+    holes: Vector[][],
+    options?: {
+      startPosition?: Vector;
+      endPosition?: Vector;
+      centerPosition?: Vector;
+      rowSpacingMm?: number;
+      stitchLengthMm?: number;
+      travelLengthMm?: number;
+      travelToleranceMm?: number;
+      underpath?: Boolean;
+    },
   ) {
-    this.shell = shell;
-    this.holes = holes;
-    this.angle = angle;
-    this.rowSpacingMm = rowSpacingMm;
-    this.fillPattern = fillPattern;
-    this.travelStitchLengthMm = travelStitchLengthMm;
-    this.startPosition = startPosition;
-    this.endPosition = endPosition;
-    this.underpath = underpath;
-
-    this.geometryFactory = geometryFactory;
-    const shellRing = this.geometryFactory.createLinearRing(
-      this.shell.vertices.map((v) => new Coordinate(v.x, v.y)),
-    );
-    const holeRings = this.holes.map((h) =>
-      this.geometryFactory.createLinearRing(
-        h.vertices.map((v) => new Coordinate(v.x, v.y)),
-      ),
-    );
-    this.polygon =
-      this.holes.length > 0
-        ? this.geometryFactory.createPolygon(shellRing, holeRings)
-        : this.geometryFactory.createPolygon(shellRing);
-    this.boundary = this.polygon.getBoundary();
-    this.shapeGeoms = [shellRing, ...holeRings].map((r) => ({
+    const shellCoords = shell.map((v) => new Coordinate(v.x, v.y));
+    const shellRing = geometryFactory.createLinearRing(shellCoords);
+    const holeRings = holes.map((h) => {
+      const holeCoords = h.map((v) => new Coordinate(v.x, v.y));
+      return geometryFactory.createLinearRing(holeCoords);
+    });
+    this.polygon = geometryFactory.createPolygon(shellRing, holeRings);
+    this.startPosition = vec2Coord(options?.startPosition ?? shell[0]);
+    this.endPosition = vec2Coord(options?.endPosition ?? shell[0]);
+    this.centerPosition = options?.centerPosition
+      ? vec2Coord(options?.centerPosition)
+      : this.polygon.getCentroid().getCoordinate();
+    this.rowSpacingMm = options?.rowSpacingMm ?? 0.2;
+    this.stitchLengthMm = options?.stitchLengthMm ?? 3;
+    this.travelLengthMm = options?.travelLengthMm ?? 3;
+    this.travelToleranceMm = options?.travelToleranceMm ?? 1;
+    this.underpath = options?.underpath ?? true;
+    this.indexedOutlines = [shellRing, ...holeRings].map((r) => ({
       geometry: r,
       lengthIndexedLine: new LengthIndexedLine(r),
     }));
-
-    const minimumBoundingCircle = new MinimumBoundingCircle(this.polygon);
-    const boundingCenter = minimumBoundingCircle.getCentre();
-    this.boundingRadius = minimumBoundingCircle.getRadius();
-    if (centerPosition !== undefined) {
-      this.centerPosition = centerPosition;
-      this.boundingRadius += boundingCenter.distance(
-        new Coordinate(centerPosition.x, centerPosition.y),
-      );
-    } else {
-      this.centerPosition = new Vector(boundingCenter.x, boundingCenter.y);
-    }
   }
 
   getStitches(pixelsPerMm: number): Stitch[] {
-    const fillRows = this.getRows(
-      this.centerPosition,
-      this.angle,
-      this.boundingRadius,
-      pixelsPerMm * this.rowSpacingMm,
-      'fill',
-    );
-    const fillRowsIntersection = OverlayOp.intersection(this.polygon, fillRows);
-    if (fillRowsIntersection.isEmpty()) {
-      console.log('small shape - did not intersect with the grating');
-      return [];
-    }
-    const fillSegments = LineStringExtracter.getGeometry(fillRowsIntersection);
-    const fillStitchGraph = this.buildFillStitchGraph(fillSegments);
+    // const centerPoint = geometryFactory.createPoint(this.centerPosition);
+    // const maxSpiralRadius = DiscreteHausdorffDistance.distance(this.polygon, centerPoint);
+    // const rowSpacingPx = this.rowSpacingMm * pixelsPerMm;
+    // const stitchSpacingPx = this.stitchLengthMm * pixelsPerMm;
+    //
+    // const lineMerger = new LineMerger();
+    // const radius = maxSpiralRadius + 4 * rowSpacingPx;
+    // const spacing = 2 * rowSpacingPx;
+    // const sampling = stitchSpacingPx;
+    // lineMerger.add(this.getSpiral(radius, spacing, sampling, 0));
+    // lineMerger.add(this.getSpiral(radius, spacing, sampling, Math.PI));
+    // const spiral = lineMerger.getMergedLineStrings().toArray()[0];
+    // const spiralSegments = LineStringExtracter.getGeometry(OverlayOp.intersection(this.polygon, spiral));
+
+    const spiralSegments = this.getSpiralSegments(pixelsPerMm);
+
+    const fillStitchGraph = this.buildFillStitchGraph(spiralSegments);
     const travelGraph = this.buildTravelGraph(fillStitchGraph, pixelsPerMm);
     const path = this.findStitchPath(fillStitchGraph, travelGraph);
-    const stitches = this.pathToStitches(
-      path,
-      travelGraph,
-      fillStitchGraph,
-      pixelsPerMm,
-    ).map((c) => new Stitch(new Vector(c.x, c.y)));
-    if (this.startPosition.distance(stitches[0].position) > pixelsPerMm) {
-      stitches[0].stitchType = StitchType.JUMP;
-      stitches.unshift(new Stitch(this.startPosition, StitchType.START));
-    }
-    if (this.endPosition.distance(stitches[stitches.length - 1].position) > pixelsPerMm) {
-      stitches.push(new Stitch(this.endPosition, StitchType.JUMP));
-    }
-    return stitches;
+    return this.pathToStitches(path, travelGraph, fillStitchGraph, pixelsPerMm).map(
+      (c) => new Stitch(new Vector(c.x, c.y)),
+    );
   }
 
-  getRows(center: Vector, angle: number, radius: number, spacing: number, label = '') {
-    const dir = Vector.fromAngle(angle).multiply(radius);
-    const p1 = center.add(dir);
-    const p2 = center.subtract(dir);
-    const n = Vector.fromAngle(angle + 0.5 * Math.PI);
-    let lineStrings = [
-      this.buildLineString([new Coordinate(p1.x, p1.y), new Coordinate(p2.x, p2.y)], {
-        index: 0,
-      }),
-    ];
-    for (let i = 0, r = spacing; r < radius; i++, r += spacing) {
-      const offset = n.multiply(r);
-      lineStrings.push(
-        this.buildLineString(
-          [
-            new Coordinate(p1.x + offset.x, p1.y + offset.y),
-            new Coordinate(p2.x + offset.x, p2.y + offset.y),
-          ],
-          { index: i + 1 },
-        ),
+  getSpiralSegments(pixelsPerMm: number): MultiLineString {
+    const rowSpacing = this.rowSpacingMm * pixelsPerMm;
+    const sampleSpacing = this.stitchLengthMm * pixelsPerMm;
+
+    const centerPoint = geometryFactory.createPoint(this.centerPosition);
+    const isCovered = this.polygon.covers(centerPoint);
+    const minRadius = this.polygon.distance(centerPoint);
+    const maxRadius = DiscreteHausdorffDistance.distance(this.polygon, centerPoint);
+
+    function normalizeAngle(theta: number): number {
+      const twoPi = 2 * Math.PI;
+      theta = theta % twoPi;
+      return theta < 0 ? theta + twoPi : theta;
+    }
+
+    function minimalSweepInterval(P: Coordinate, Qs: Coordinate[]) {
+      if (Qs.length === 1) {
+        const a = normalizeAngle(Math.atan2(Qs[0].y - P.y, Qs[0].x - P.x));
+        return { startAngle: a, endAngle: a, sweepAngle: 0 };
+      }
+
+      const angles = Qs.map((Q) => normalizeAngle(Math.atan2(Q.y - P.y, Q.x - P.x))).sort(
+        (a, b) => a - b,
       );
-      lineStrings.push(
-        this.buildLineString(
-          [
-            new Coordinate(p1.x - offset.x, p1.y - offset.y),
-            new Coordinate(p2.x - offset.x, p2.y - offset.y),
-          ],
-          { index: -(i + 1) },
-        ),
-      );
+
+      let maxGap = -1;
+      let gapStartIndex = 0;
+
+      for (let i = 0; i < angles.length; i++) {
+        const a = angles[i];
+        const b = i + 1 < angles.length ? angles[i + 1] : angles[0] + 2 * Math.PI;
+        const gap = b - a;
+        if (gap > maxGap) {
+          maxGap = gap;
+          gapStartIndex = i;
+        }
+      }
+
+      const startAngle = angles[(gapStartIndex + 1) % angles.length];
+      const endAngle = angles[gapStartIndex];
+      const sweepAngle = 2 * Math.PI - maxGap;
+
+      return { startAngle, endAngle, sweepAngle };
     }
-    return this.buildMultiLineString(lineStrings, { angle, label });
+
+    const { startAngle, sweepAngle } = isCovered
+      ? { startAngle: 0, sweepAngle: 2 * Math.PI }
+      : minimalSweepInterval(
+          this.centerPosition,
+          this.polygon.getExteriorRing().getCoordinates(),
+        );
+    const sagitta = 0.5 * rowSpacing + (sampleSpacing * sampleSpacing) / (8 * rowSpacing);
+
+    const segments = [];
+    if (isCovered) {
+      const leftArm = [];
+      const rightArm = [];
+      for (
+        let r = Math.max(minRadius, sagitta), i = 0;
+        r < maxRadius;
+        r += 2 * rowSpacing, i++
+      ) {
+        // const countSamples = Math.max(
+        //   Math.round(sweepAngle * (r + 2 * rowSpacing) / sampleSpacing),
+        //   Math.ceil(2 * Math.PI / Math.acos(-rowSpacing / (r + 2 * rowSpacing) + 1))
+        // );
+        const countSamples = Math.round(
+          (sweepAngle * (r + 2 * rowSpacing)) / sampleSpacing,
+        );
+        for (let i = 0; i < countSamples; i++) {
+          const a = Utils.map(i, 0, countSamples, 0, sweepAngle);
+          const w = a / (2 * Math.PI);
+          const v1 = Vector.fromAngle(startAngle + a).multiply((1 - w) * r);
+          const v2 = Vector.fromAngle(startAngle + a).multiply(w * (r + 2 * rowSpacing));
+          const v = v1.copy().add(v2);
+          leftArm.push(
+            new Coordinate(v.x + this.centerPosition.x, v.y + this.centerPosition.y),
+          );
+          rightArm.push(
+            new Coordinate(-v.x + this.centerPosition.x, -v.y + this.centerPosition.y),
+          );
+        }
+      }
+      rightArm.reverse();
+      const intersection = this.polygon.intersection(
+        geometryFactory.createLineString([...rightArm, ...leftArm]),
+      );
+      for (let i = 0; i < intersection.getNumGeometries(); i++) {
+        segments.push(intersection.getGeometryN(i));
+      }
+    } else {
+      const lineMerger = new LineMerger();
+      for (let r = minRadius - rowSpacing; r <= maxRadius; r += rowSpacing) {
+        const countSamples = Math.max(
+          Math.round((sweepAngle * (r + 2 * rowSpacing)) / sampleSpacing),
+          Math.ceil((2 * Math.PI) / Math.acos(-rowSpacing / (r + 2 * rowSpacing) + 1)),
+        );
+        const segment = [];
+        for (let i = 0; i < countSamples; i++) {
+          const a = Utils.map(i, 0, countSamples - 1, 0, sweepAngle);
+          const w = a / (2 * Math.PI);
+          const v1 = Vector.fromAngle(startAngle + a).multiply((1 - w) * r);
+          const v2 = Vector.fromAngle(startAngle + a).multiply(w * (r + 2 * rowSpacing));
+          const v = v1.add(v2);
+          segment.push(
+            new Coordinate(v.x + this.centerPosition.x, v.y + this.centerPosition.y),
+          );
+        }
+        // const intersection: Geometry = this.polygon.intersection(geometryFactory.createLineString(segment));
+        lineMerger.add(
+          OverlayOp.overlayOp(
+            this.polygon,
+            geometryFactory.createLineString(segment),
+            OverlayOp.INTERSECTION,
+          ),
+        );
+      }
+      segments.push(...lineMerger.getMergedLineStrings().toArray());
+    }
+    return geometryFactory.createMultiLineString(segments);
   }
 
-  buildLineString(coords: Coordinate[], data: { index: number }): LineString {
-    const ls = this.geometryFactory.createLineString(coords);
-    ls.setUserData(data);
-    return ls;
-  }
-
-  buildMultiLineString(
-    lineStrings: LineString[],
-    data: { index?: number; angle?: number; label?: string },
-  ) {
-    const mls = this.geometryFactory.createMultiLineString(lineStrings);
-    mls.setUserData(data);
-    return mls;
-  }
+  // getSpiral(
+  //   radius: number,
+  //   spacing: number,
+  //   sampling: number,
+  //   offset: number,
+  // ): LineString {
+  //   let [theta, r] = [0, spacing];
+  //   const points = [this.centerPosition];
+  //   while (r <= radius) {
+  //     const dr_dtheta = spacing / (2 * Math.PI);
+  //     const dtheta = sampling / Math.sqrt(r * r + dr_dtheta * dr_dtheta);
+  //     const maxDtheta = 2 * Math.acos(Math.max(Math.min(1 - (0.4 * spacing) / r, 1), -1));
+  //     theta = theta + Math.min(dtheta, maxDtheta);
+  //     r = (spacing * theta) / (2 * Math.PI);
+  //     const xr = r * Math.cos(theta + offset) + this.centerPosition.x;
+  //     const yr = r * Math.sin(theta + offset) + this.centerPosition.y;
+  //     points.push(new Coordinate(xr, yr));
+  //   }
+  //   return geometryFactory.createLineString(points);
+  // }
 
   getClosestShapeOutlineIndex(pos: Point) {
     let [outlineIndex, minDistance] = [
       0,
-      DistanceOp.distance(this.shapeGeoms[0].geometry, pos),
+      DistanceOp.distance(this.indexedOutlines[0].geometry, pos),
     ];
-    for (let i = 1; i < this.shapeGeoms.length; i++) {
-      const distance = DistanceOp.distance(this.shapeGeoms[i].geometry, pos);
+    for (let i = 1; i < this.indexedOutlines.length; i++) {
+      const distance = DistanceOp.distance(this.indexedOutlines[i].geometry, pos);
       if (distance < minDistance) {
         [outlineIndex, minDistance] = [i, distance];
       }
@@ -210,12 +267,12 @@ export class AutoFill implements IRun {
 
   insertNode(graph: graphlib.Graph, pos: Point) {
     const outlineIndex = this.getClosestShapeOutlineIndex(pos);
-    const projection = this.shapeGeoms[outlineIndex].lengthIndexedLine.project(
+    const projection = this.indexedOutlines[outlineIndex].lengthIndexedLine.project(
       pos.getCoordinate(),
     );
     const projectedCoord =
-      this.shapeGeoms[outlineIndex].lengthIndexedLine.extractPoint(projection);
-    const projectedPoint = this.geometryFactory.createPoint(projectedCoord);
+      this.indexedOutlines[outlineIndex].lengthIndexedLine.extractPoint(projection);
+    const projectedPoint = geometryFactory.createPoint(projectedCoord);
 
     const edges = [];
     for (const e of graph.edges()) {
@@ -227,9 +284,9 @@ export class AutoFill implements IRun {
     }
 
     if (edges.length > 0) {
-      let [edge, minDistance] = [edges[0], edges[0][2].geometry.distance(projectedCoord)];
+      let [edge, minDistance] = [edges[0], edges[0][2].geometry.distance(projectedPoint)];
       for (let i = 1; i < edges.length; i++) {
-        const distance = edges[i][2].geometry.distance(projectedCoord);
+        const distance = edges[i][2].geometry.distance(projectedPoint);
         if (distance < minDistance) {
           [edge, minDistance] = [edges[i], distance];
         }
@@ -270,48 +327,42 @@ export class AutoFill implements IRun {
     return null;
   }
 
-  buildFillStitchGraph(segments: MultiLineString) {
+  buildFillStitchGraph(spiralSegments: MultiLineString): graphlib.Graph {
     let g = new graphlib.Graph({ directed: false, multigraph: true });
 
-    // First, add the grating segments as edges.  We'll use the coordinates
-    // of the endpoints as nodes.
-    for (let i = 0, n = segments.getNumGeometries(); i < n; i++) {
-      const ls = segments.getGeometryN(i);
-      let p = ls.getPointN(0),
-        q = null;
-      g.setNode(p, { geometry: p });
-      for (let j = 1, m = ls.getNumPoints(); j < m; j++) {
-        q = ls.getPointN(j);
-        g.setNode(q, { geometry: q });
-        g.setEdge(p, q, {
-          type: 'segment',
-          geometry: new LineSegment(p, q),
-          underpathEdges: [],
-        });
-        p = q;
-      }
+    for (let i = 0; i < spiralSegments.getNumGeometries(); i++) {
+      const ls = spiralSegments.getGeometryN(i);
+      let [s, t] = [ls.getPointN(0), ls.getPointN(ls.getNumPoints() - 1)];
+      g.setNode(s, { geometry: s });
+      g.setNode(t, { geometry: t });
+      g.setEdge(s, t, { type: 'segment', geometry: ls, underpathEdges: [] });
     }
 
     // Tag nodes with outline and projection
     for (let node of g.nodes()) {
       const label = g.node(node);
-      for (let i = 0, n = this.shapeGeoms.length; i < n; i++) {
-        if (label.geometry.isWithinDistance(this.shapeGeoms[i].geometry, 0.0001)) {
+      let check = false;
+      for (let i = 0, n = this.indexedOutlines.length; i < n; i++) {
+        if (label.geometry.isWithinDistance(this.indexedOutlines[i].geometry, 0.0001)) {
           label.shapeIndex = i;
-          label.length = this.shapeGeoms[i].lengthIndexedLine.project(
+          label.length = this.indexedOutlines[i].lengthIndexedLine.project(
             label.geometry.getCoordinate(),
           );
-          label.projection = this.shapeGeoms[i].lengthIndexedLine.extractPoint(
+          label.projection = this.indexedOutlines[i].lengthIndexedLine.extractPoint(
             label.length,
           );
           g.setNode(node, label);
+          check = true;
           break;
         }
+      }
+      if (!check) {
+        g.removeNode(node);
       }
     }
 
     // Add edges between outline nodes
-    for (let i = 0, n = this.shapeGeoms.length; i < n; i++) {
+    for (let i = 0, n = this.indexedOutlines.length; i < n; i++) {
       const nodes = g
         .filterNodes((node) => g.node(node).shapeIndex === i)
         .nodes()
@@ -321,10 +372,10 @@ export class AutoFill implements IRun {
         n2 = null;
       for (let j = 1, m = nodes.length; j < m + 1; j++) {
         n2 = nodes[j % m];
-        const geometry = new LineSegment(
+        const geometry = geometryFactory.createLineString([
           n1[1].geometry.getCoordinate(),
           n2[1].geometry.getCoordinate(),
-        );
+        ]);
         g.setEdge(n1[0], n2[0], { type: 'outline', geometry }, 'outline');
         if (j % 2 === 0) {
           g.setEdge(n1[0], n2[0], { type: 'extra', geometry }, 'extra');
@@ -334,27 +385,71 @@ export class AutoFill implements IRun {
     }
 
     if (this.startPosition) {
-      this.insertNode(
-        g,
-        this.geometryFactory.createPoint(
-          new Coordinate(this.startPosition.x, this.startPosition.y),
-        ),
-      );
+      const startPoint = geometryFactory.createPoint(this.startPosition);
+      this.insertNode(g, startPoint);
     }
-
     if (this.endPosition) {
-      this.insertNode(
-        g,
-        this.geometryFactory.createPoint(
-          new Coordinate(this.endPosition.x, this.endPosition.y),
-        ),
-      );
+      const endPoint = geometryFactory.createPoint(this.endPosition);
+      this.insertNode(g, endPoint);
     }
 
     return g;
   }
 
-  buildTravelGraph(fillStitchGraph: graphlib.Graph, pixelsPerMm: number): graphlib.Graph {
+  buildLineString(coords: Coordinate[], data: { index: number }): LineString {
+    const ls = geometryFactory.createLineString(coords);
+    ls.setUserData(data);
+    return ls;
+  }
+
+  buildMultiLineString(
+    lineStrings: LineString[],
+    data: { index?: number; angle?: number; label?: string },
+  ) {
+    const mls = geometryFactory.createMultiLineString(lineStrings);
+    mls.setUserData(data);
+    return mls;
+  }
+
+  getRows(center: Vector, angle: number, radius: number, spacing: number, label = '') {
+    const dir = Vector.fromAngle(angle).multiply(radius);
+    const p1 = center.add(dir);
+    const p2 = center.subtract(dir);
+    const n = Vector.fromAngle(angle + 0.5 * Math.PI);
+    let lineStrings = [
+      this.buildLineString([new Coordinate(p1.x, p1.y), new Coordinate(p2.x, p2.y)], {
+        index: 0,
+      }),
+    ];
+    for (let i = 0, r = spacing; r < radius; i++, r += spacing) {
+      const offset = n.multiply(r);
+      lineStrings.push(
+        this.buildLineString(
+          [
+            new Coordinate(p1.x + offset.x, p1.y + offset.y),
+            new Coordinate(p2.x + offset.x, p2.y + offset.y),
+          ],
+          { index: i + 1 },
+        ),
+      );
+      lineStrings.push(
+        this.buildLineString(
+          [
+            new Coordinate(p1.x - offset.x, p1.y - offset.y),
+            new Coordinate(p2.x - offset.x, p2.y - offset.y),
+          ],
+          { index: -(i + 1) },
+        ),
+      );
+    }
+    return this.buildMultiLineString(lineStrings, { angle, label });
+  }
+
+  buildTravelGraph(
+    fillStitchGraph: graphlib.Graph,
+    // spiralRadius: number,
+    pixelsPerMm: number,
+  ): graphlib.Graph {
     let g = new graphlib.Graph({ directed: false, multigraph: true });
 
     // Add all the nodes from the main graph.  This will be all of the endpoints
@@ -367,31 +462,34 @@ export class AutoFill implements IRun {
     let grating = true;
     if (this.underpath) {
       // Build the travel edges
+      const center = this.polygon.getCentroid();
+      const centerVec = new Vector(center.getX(), center.getY());
+      const radius = DiscreteHausdorffDistance.distance(this.polygon, center);
       const rows1 = this.getRows(
-        this.centerPosition,
-        this.angle + 0.25 * Math.PI,
-        this.boundingRadius,
-        this.travelStitchLengthMm * pixelsPerMm,
+        centerVec,
+        0.25 * Math.PI,
+        radius,
+        this.travelLengthMm * pixelsPerMm,
         '+',
       );
       const rows2 = this.getRows(
-        this.centerPosition,
-        this.angle - 0.25 * Math.PI,
-        this.boundingRadius,
-        this.travelStitchLengthMm * pixelsPerMm,
+        centerVec,
+        -0.25 * Math.PI,
+        radius,
+        this.travelLengthMm * pixelsPerMm,
         '-',
       );
       const rows3 = this.getRows(
-        this.centerPosition,
-        this.angle + 0.5 * Math.PI,
-        this.boundingRadius,
-        Math.sqrt(2) * this.travelStitchLengthMm * pixelsPerMm,
+        centerVec,
+        0.5 * Math.PI,
+        radius,
+        Math.sqrt(2) * this.travelLengthMm * pixelsPerMm,
         '90',
       );
       const segs1 = OverlayOp.intersection(this.polygon, rows1);
       const segs2 = OverlayOp.intersection(this.polygon, rows2);
       const segs3 = OverlayOp.intersection(this.polygon, rows3);
-      endpoints = this.geometryFactory.createMultiPointFromCoords([
+      endpoints = geometryFactory.createMultiPointFromCoords([
         ...segs1.getCoordinates(),
         ...segs2.getCoordinates(),
         ...segs3.getCoordinates(),
@@ -405,10 +503,7 @@ export class AutoFill implements IRun {
         snapper.snapTo(diagonalEdges, 0.005),
       );
       travelEdges = LineStringExtracter.getLines(
-        this.geometryFactory.createGeometryCollection([
-          diagonalEdges,
-          snappedVerticalEdges,
-        ]),
+        geometryFactory.createGeometryCollection([diagonalEdges, snappedVerticalEdges]),
       )
         .toArray()
         .filter((ls: LineString) => !ls.isEmpty());
@@ -420,13 +515,13 @@ export class AutoFill implements IRun {
         // This will ensure that a path traveling inside the shape can reach its
         // target on the outline, which will be one of the points added above.
         for (let i = 0, n = endpoints.getNumGeometries(); i < n; i++) {
-          for (let j = 0, m = this.shapeGeoms.length; j < m; j++) {
+          for (let j = 0, m = this.indexedOutlines.length; j < m; j++) {
             const point = endpoints.getGeometryN(i);
             const coord = point.getCoordinate();
-            if (point.isWithinDistance(this.shapeGeoms[j].geometry, 0.0001)) {
-              const length = this.shapeGeoms[j].lengthIndexedLine.project(coord);
+            if (point.isWithinDistance(this.indexedOutlines[j].geometry, 0.0001)) {
+              const length = this.indexedOutlines[j].lengthIndexedLine.project(coord);
               const projection =
-                this.shapeGeoms[j].lengthIndexedLine.extractPoint(length);
+                this.indexedOutlines[j].lengthIndexedLine.extractPoint(length);
               g.setNode(point, { geometry: point, shapeIndex: j, length, projection });
             }
           }
@@ -436,25 +531,26 @@ export class AutoFill implements IRun {
 
     // add boundary travel nodes
     if (!this.underpath || !grating) {
-      for (let i = 0, n = this.shapeGeoms.length; i < n; i++) {
+      for (let i = 0, n = this.indexedOutlines.length; i < n; i++) {
         let prev = null;
-        for (const p of this.shapeGeoms[i].geometry.getCoordinates()) {
-          const pt = this.geometryFactory.createPoint(p);
+        for (const p of this.indexedOutlines[i].geometry.getCoordinates()) {
+          const pt = geometryFactory.createPoint(p);
           if (prev !== null) {
             // Subdivide long straight line segments.  Otherwise we may not
             // have a node near the user's chosen starting or ending point
             const segment = new LineSegment(prev, p);
             const length = segment.getLength();
-            if (length > this.travelStitchLengthMm * pixelsPerMm) {
+            if (length > this.travelLengthMm * pixelsPerMm) {
               for (
-                let j = this.travelStitchLengthMm * pixelsPerMm;
+                let j = this.travelLengthMm * pixelsPerMm;
                 j < length;
-                j += this.travelStitchLengthMm * pixelsPerMm
+                j += this.travelLengthMm * pixelsPerMm
               ) {
                 const coord = segment.pointAlong(j / length);
-                const subpoint = this.geometryFactory.createPoint(coord);
-                const len = this.shapeGeoms[i].lengthIndexedLine.project(coord);
-                const projection = this.shapeGeoms[i].lengthIndexedLine.extractPoint(len);
+                const subpoint = geometryFactory.createPoint(coord);
+                const len = this.indexedOutlines[i].lengthIndexedLine.project(coord);
+                const projection =
+                  this.indexedOutlines[i].lengthIndexedLine.extractPoint(len);
                 g.setNode(subpoint, {
                   geometry: subpoint,
                   shapeIndex: i,
@@ -464,8 +560,8 @@ export class AutoFill implements IRun {
               }
             }
           }
-          const pLen = this.shapeGeoms[i].lengthIndexedLine.project(p);
-          const pProj = this.shapeGeoms[i].lengthIndexedLine.extractPoint(pLen);
+          const pLen = this.indexedOutlines[i].lengthIndexedLine.project(p);
+          const pProj = this.indexedOutlines[i].lengthIndexedLine.extractPoint(pLen);
           g.setNode(pt, { geometry: pt, shapeIndex: i, length: pLen, projection: pProj });
           prev = p;
         }
@@ -473,7 +569,7 @@ export class AutoFill implements IRun {
     }
 
     // add edges between outline nodes
-    for (let i = 0, n = this.shapeGeoms.length; i < n; i++) {
+    for (let i = 0, n = this.indexedOutlines.length; i < n; i++) {
       const nodes = g
         .filterNodes((node) => g.node(node).shapeIndex === i)
         .nodes()
@@ -483,10 +579,10 @@ export class AutoFill implements IRun {
         n2 = null;
       for (let j = 1, m = nodes.length; j < m + 1; j++) {
         n2 = nodes[j % m];
-        const geometry = new LineSegment(
+        const geometry = geometryFactory.createLineString([
           n1[1].geometry.getCoordinate(),
           n2[1].geometry.getCoordinate(),
-        );
+        ]);
         const d = geometry.getLength();
         g.setEdge(n1[0], n2[0], { type: 'outline', geometry, weight: 3 * d }, 'outline');
         if (j % 2 === 0) {
@@ -500,25 +596,27 @@ export class AutoFill implements IRun {
       const strTree = new STRtree(4);
       for (const e of fillStitchGraph.edges().map((e) => [e, fillStitchGraph.edge(e)])) {
         if (e[1].type === 'segment') {
-          const p = e[1].geometry.p0.getCoordinate();
-          const q = e[1].geometry.p1.getCoordinate();
-          strTree.insert(new Envelope(p, q), e);
+          strTree.insert(e[1].geometry.getEnvelopeInternal(), e);
         }
       }
 
       const indexedFacetDistance = new IndexedFacetDistance(this.polygon);
-
+      const centerPoint = geometryFactory.createPoint(this.centerPosition);
       for (let i = 0, n = travelEdges.length; i < n; i++) {
         const geometry = travelEdges[i];
         let p = geometry.getPointN(0),
           q = null;
         for (let j = 1, m = geometry.getNumPoints(); j < m; j++) {
           q = geometry.getPointN(j);
-          const ls = new LineSegment(p.getX(), p.getY(), q.getX(), q.getY());
+          // const ls = new LineSegment(p.getX(), p.getY(), q.getX(), q.getY());
+          const ls = geometryFactory.createLineString([
+            new Coordinate(p.getX(), p.getY()),
+            new Coordinate(q.getX(), q.getY()),
+          ]);
+          const minDist = ls.distance(centerPoint);
+          const maxDist = DiscreteHausdorffDistance.distance(ls, centerPoint);
           const length = ls.getLength();
-          const dToShape = indexedFacetDistance.distance(
-            ls.toGeometry(this.geometryFactory),
-          );
+          const dToShape = indexedFacetDistance.distance(ls);
           if (!g.hasNode(p)) g.setNode(p, { geometry: p });
           if (!g.hasNode(q)) g.setNode(q, { geometry: q });
           g.setEdge(
@@ -530,12 +628,15 @@ export class AutoFill implements IRun {
           for (const [k, v] of strTree.query(
             new Envelope(p.getCoordinate(), q.getCoordinate()),
           )) {
-            const p1 = new Vector(v.geometry.p0.getX(), v.geometry.p0.getY());
-            const p2 = new Vector(v.geometry.p1.getX(), v.geometry.p1.getY());
-            const q1 = new Vector(ls.p0.getX(), ls.p0.getY());
-            const q2 = new Vector(ls.p1.getX(), ls.p1.getY());
-            if (Utils.lineSegmentIntersection(p1, p2, q1, q2)) {
-              fillStitchGraph.edge(k).underpathEdges.push([p, q, 'travel']);
+            const minCurveDist = v.geometry.distance(centerPoint);
+            const maxCurveDist = DiscreteHausdorffDistance.distance(
+              v.geometry,
+              centerPoint,
+            );
+            if (minDist < maxCurveDist && minCurveDist < maxDist) {
+              if (v.geometry.intersects(ls)) {
+                fillStitchGraph.edge(k).underpathEdges.push([p, q, 'travel']);
+              }
             }
           }
           p = q;
@@ -592,13 +693,13 @@ export class AutoFill implements IRun {
       h.setEdge(v.v, v.w, travelGraph.edge(v.v, v.w, v.name), v.name);
 
     const startingPoint: Point = this.startPosition
-      ? this.geometryFactory.createPoint(
+      ? geometryFactory.createPoint(
           new Coordinate(this.startPosition.x, this.startPosition.y),
         )
-      : this.shapeGeoms[0].geometry.getCoordinates()[0];
+      : this.indexedOutlines[0].geometry.getCoordinates()[0];
     const startingNode = this.getNearestNode(fillStitchGraph, startingPoint);
     const endingPoint: Point = this.endPosition
-      ? this.geometryFactory.createPoint(
+      ? geometryFactory.createPoint(
           new Coordinate(this.endPosition.x, this.endPosition.y),
         )
       : startingPoint;
@@ -712,28 +813,6 @@ export class AutoFill implements IRun {
     fillStitchGraph: graphlib.Graph,
     pixelsPerMm: number,
   ): Coordinate[] {
-    const patternRowStitches = [];
-    for (let i = 0; i < this.fillPattern.length; i++) {
-      const rowStitches = [this.fillPattern[i].rowOffsetMm * pixelsPerMm];
-      let j = 0;
-      let curr = this.fillPattern[i].rowOffsetMm * pixelsPerMm;
-      while (curr < this.boundingRadius) {
-        curr += this.fillPattern[i].rowPatternMm[j] * pixelsPerMm;
-        rowStitches.push(curr);
-        j = (j + 1) % this.fillPattern[i].rowPatternMm.length;
-      }
-      j = this.fillPattern[i].rowPatternMm.length - 1;
-      curr = this.fillPattern[i].rowOffsetMm * pixelsPerMm;
-      while (curr > -this.boundingRadius) {
-        curr -= this.fillPattern[i].rowPatternMm[j] * pixelsPerMm;
-        rowStitches.unshift(curr);
-        j =
-          (j - 1 + this.fillPattern[i].rowPatternMm.length) %
-          this.fillPattern[i].rowPatternMm.length;
-      }
-      patternRowStitches.push(rowStitches);
-    }
-
     const collapsedPath = [];
     let runStart = null;
     for (const edge of path) {
@@ -771,52 +850,25 @@ export class AutoFill implements IRun {
     for (let i = 0, n = collapsedPath.length; i < n; i++) {
       const edge = collapsedPath[i];
       if (edge[2] === 'segment') {
-        const rowStart = Vector.fromObject(
-          fillStitchGraph.node(edge[0]).geometry.getCoordinate(),
-        );
-        const rowEnd = Vector.fromObject(
-          fillStitchGraph.node(edge[1]).geometry.getCoordinate(),
-        );
-
-        const rowStartBasis = changeOfBasis2D(
-          rowStart.subtract(this.centerPosition),
-          Vector.fromAngle(this.angle),
-          Vector.fromAngle(this.angle - 0.5 * Math.PI),
-        );
-        const rowEndBasis = changeOfBasis2D(
-          rowEnd.subtract(this.centerPosition),
-          Vector.fromAngle(this.angle),
-          Vector.fromAngle(this.angle - 0.5 * Math.PI),
-        );
-
-        const rowIndex = Math.round(rowStartBasis.y / (this.rowSpacingMm * pixelsPerMm));
-        const patternIndex =
-          ((rowIndex % this.fillPattern.length) + this.fillPattern.length) %
-          this.fillPattern.length;
-
-        const minRowBasis = Math.min(rowStartBasis.x, rowEndBasis.x);
-        const maxRowBasis = Math.max(rowStartBasis.x, rowEndBasis.x);
-        stitches.push(new Coordinate(rowStart.x, rowStart.y));
-        for (
-          let j =
-            rowStartBasis.x < rowEndBasis.x
-              ? 0
-              : patternRowStitches[patternIndex].length - 1;
-          rowStartBasis.x < rowEndBasis.x
-            ? j < patternRowStitches[patternIndex].length
-            : j >= 0;
-          rowStartBasis.x < rowEndBasis.x ? j++ : j--
-        ) {
-          const curr = patternRowStitches[patternIndex][j];
-          if (curr >= minRowBasis && curr <= maxRowBasis) {
-            const w = Utils.map(curr, rowStartBasis.x, rowEndBasis.x, 0, 1);
-            const l = rowStart.lerp(rowEnd, w);
-            stitches.push(new Coordinate(l.x, l.y));
-          }
-        }
-
+        const startCoord = fillStitchGraph.node(edge[0]).geometry.getCoordinate();
+        const rowStart = Vector.fromObject(startCoord);
+        const endCoord = fillStitchGraph.node(edge[1]).geometry.getCoordinate();
+        const rowEnd = Vector.fromObject(endCoord);
         if (fillStitchGraph.hasEdge(edge[0], edge[1])) {
           const edgeLabel = fillStitchGraph.edge(edge[0], edge[1]);
+          const lineString = edgeLabel.geometry;
+          if (
+            rowStart.distance(lineString.getCoordinateN(0)) <
+            rowEnd.distance(lineString.getCoordinateN(0))
+          ) {
+            for (let i = 0; i < lineString.getNumPoints(); i++) {
+              stitches.push(lineString.getCoordinateN(i));
+            }
+          } else {
+            for (let i = lineString.getNumPoints() - 1; i >= 0; i--) {
+              stitches.push(lineString.getCoordinateN(i));
+            }
+          }
           if (edgeLabel.type === 'segment') {
             const underpathEdges = edgeLabel.underpathEdges;
             for (let j = 0, m = underpathEdges.length; j < m; j++) {
@@ -830,6 +882,7 @@ export class AutoFill implements IRun {
         }
       } else {
         const shortestPath = this.aStar(travelGraph, edge[0], edge[1]);
+        // const shortestPath = this.shortestPath(travelGraph, edge[0], edge[1])
         const travelSequence: Coordinate[] = [];
         if (shortestPath) {
           for (let j = 1, m = shortestPath.length; j < m; j++) {
@@ -839,7 +892,7 @@ export class AutoFill implements IRun {
           }
         }
         if (travelSequence.length > 1) {
-          const travelLine = this.geometryFactory.createLineString(travelSequence);
+          const travelLine = geometryFactory.createLineString(travelSequence);
           const travelSimplified = VWSimplifier.simplify(travelLine, 0.5 * pixelsPerMm);
           const travel = new Polyline(false);
           for (let j = 0; j < travelSimplified.getNumPoints(); j++) {
@@ -848,10 +901,10 @@ export class AutoFill implements IRun {
           }
           if (travel.vertices.length > 1) {
             const resamp = resample(
-              this.geometryFactory.createLineString(
+              geometryFactory.createLineString(
                 travel.vertices.map((v) => new Coordinate(v.x, v.y)),
               ),
-              pixelsPerMm * this.travelStitchLengthMm,
+              pixelsPerMm * this.travelLengthMm,
               pixelsPerMm,
             );
             for (let i = 0, n = resamp.getNumPoints(); i < n; i++) {
@@ -914,86 +967,4 @@ export class AutoFill implements IRun {
     // no path
     return null;
   }
-}
-
-// class MinPriorityQueue {
-//   heap: any[];
-//   constructor() {
-//     this.heap = [];
-//   }
-//   isEmpty() {
-//     return this.heap.length === 0;
-//   }
-//   enqueue(item: any) {
-//     this.heap.push(item);
-//     this._siftUp(this.heap.length - 1);
-//   }
-//   dequeue() {
-//     if (this.isEmpty()) return null;
-//     this._swap(0, this.heap.length - 1);
-//     const min = this.heap.pop();
-//     this._siftDown(0);
-//     return min;
-//   }
-//   peek() {
-//     return this.heap[0];
-//   }
-//   _parent(i: any) {
-//     return Math.floor((i - 1) / 2);
-//   }
-//   _left(i: any) {
-//     return 2 * i + 1;
-//   }
-//   _right(i: any) {
-//     return 2 * i + 2;
-//   }
-//   _swap(i: any, j: any) {
-//     [this.heap[i], this.heap[j]] = [this.heap[j], this.heap[i]];
-//   }
-//   _siftUp(i: any) {
-//     let idx = i;
-//     while (idx > 0) {
-//       const p = this._parent(idx);
-//       if (this.heap[p].priority <= this.heap[idx].priority) break;
-//       this._swap(p, idx);
-//       idx = p;
-//     }
-//   }
-//   _siftDown(i: any) {
-//     let idx = i,
-//       len = this.heap.length;
-//     while (true) {
-//       const l = this._left(idx),
-//         r = this._right(idx);
-//       let smallest = idx;
-//       if (l < len && this.heap[l].priority < this.heap[smallest].priority) smallest = l;
-//       if (r < len && this.heap[r].priority < this.heap[smallest].priority) smallest = r;
-//       if (smallest === idx) break;
-//       this._swap(idx, smallest);
-//       idx = smallest;
-//     }
-//   }
-// }
-
-function changeOfBasis2D(v: Vector, b1: Vector, b2: Vector): Vector {
-  const [x, y] = [v.x, v.y];
-  const [b1x, b1y] = [b1.x, b1.y];
-  const [b2x, b2y] = [b2.x, b2.y];
-
-  // Construct inverse of the change-of-basis matrix B = [b1 b2]
-  const det = b1x * b2y - b1y * b2x;
-  if (Math.abs(det) < 1e-10) {
-    throw new Error('Basis vectors are linearly dependent (determinant is zero)');
-  }
-
-  const invB = [
-    [b2y / det, -b1y / det],
-    [-b2x / det, b1x / det],
-  ];
-
-  // Multiply invB * v
-  const newX = invB[0][0] * x + invB[0][1] * y;
-  const newY = invB[1][0] * x + invB[1][1] * y;
-
-  return new Vector(newX, newY);
 }

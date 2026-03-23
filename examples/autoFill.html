@@ -52,28 +52,51 @@
   const fillCenter = new Stitch.Math.Vector(200, 200);
   // const fillCenter = undefined;
 
-  const autoFill = new Stitch.Core.Runs.AutoFill(
-    shell,
-    holes,
-    angle,
-    rowSpacing,
-    fillPattern,
-    travelStitchLength,
-    startPos,
-    endPos,
-    fillCenter,
-    true,
+  // const autoFill = new Stitch.Core.Runs.AutoFill(
+  //   shell,
+  //   holes,
+  //   angle,
+  //   rowSpacing,
+  //   fillPattern,
+  //   travelStitchLength,
+  //   startPos,
+  //   endPos,
+  //   fillCenter,
+  //   true,
+  // );
+  // thread.addRun(autoFill);
+
+  // const underlay1 = new Stitch.Core.Runs.TatamiFill(shell, holes, 0, 1, 3, 3, startPos, startPos);
+  // const underlay2 = new Stitch.Core.Runs.TatamiFill(shell, holes, 0.5 * Math.PI, 0.6, 3, 3, startPos, startPos);
+  // thread.addRun(underlay1);
+  // thread.addRun(underlay2);
+
+  const circularFill = new Stitch.Core.Runs.CircularFill(
+    shell.vertices,
+    holes.map(h => h.vertices),
+    {
+      startPosition: startPos,
+      endPosition: endPos,
+      rowSpacingMm: 1.5,
+      stitchLengthMm: 4,
+      travelLengthMm: 4,
+      centerPosition: new Stitch.Math.Vector(140, 150),
+      // centerPosition: new Stitch.Math.Vector(0, 0),
+      // centerPosition: new Stitch.Math.Vector(205, 150),
+      underpath: false,
+    }
   );
-  thread.addRun(autoFill);
+  thread.addRun(circularFill);
 
   const startTime = performance.now();
-  let stitches = autoFill.getStitches(1.8);
+  // let stitches = autoFill.getStitches(1.8);
   // let stitches = autoFill.getStitches(2.8);
+  let stitches = circularFill.getStitches(1.8);
   const endTime = performance.now();
   document.body.appendChild(document.createElement("p")).textContent = `Execution time: ${((endTime - startTime) / 1000).toFixed(2)} seconds`;
   document.body.appendChild(document.createElement("p")).textContent = `Stitch count: ~${stitches.length.toLocaleString()}`;
 
-  console.log(stitches)
+  // console.log(stitches)
   let convertCoordinateX, convertCoordinateY;
   function setup() {
     createCanvas(1000, 1000);
@@ -105,6 +128,8 @@
     circle(convertCoordinateX(endPos.x), convertCoordinateY(endPos.y), 10);
     fill(0, 0, 0);
     circle(convertCoordinateX(fillCenter.x), convertCoordinateY(fillCenter.y), 2);
+    fill(0, 0, 0);
+    circle(convertCoordinateX(205), convertCoordinateY(150), 10);
   }
 
   // let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5, 1.5);
