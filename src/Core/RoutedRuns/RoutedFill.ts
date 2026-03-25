@@ -241,7 +241,7 @@ export class RoutedFill implements IRoutedRun {
             const outline = this.indexedOutlines[j];
             if (geometry.isWithinDistance(outline.geometry, 0.0001)) {
               const lengthIndex = outline.lengthIndexedLine.project(coordinate);
-              const projection = outline.lengthIndexedLine.extractPoint(length);
+              const projection = outline.lengthIndexedLine.extractPoint(lengthIndex);
               const label = {
                 geometry,
                 outlineData: { projection, shapeIndex: j, lengthIndex },
