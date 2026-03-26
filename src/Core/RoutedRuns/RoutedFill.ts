@@ -100,24 +100,20 @@ export class RoutedFill implements IRoutedRun {
     const shellRing = geometryFactory.createLinearRing(shellCoords);
     const holeRings = holes.map((h) => {
       const holeCoords = h.map((v) => new Coordinate(v.x, v.y));
-      const holeRing = geometryFactory.createLinearRing(holeCoords);
-      this.indexedOutlines.push({
-        geometry: holeRing,
-        lengthIndexedLine: new LengthIndexedLine(holeRing),
-      });
-      return holeRing;
+      return geometryFactory.createLinearRing(holeCoords);
     });
     this.polygon = geometryFactory.createPolygon(shellRing, holeRings);
-
-    this.indexedOutlines.push({
-      geometry: shellRing,
-      lengthIndexedLine: new LengthIndexedLine(shellRing),
-    });
-    this.indexedOutlines.push(
-      ...holeRings.map((h) => {
-        return { geometry: h, lengthIndexedLine: new LengthIndexedLine(h) };
-      }),
-    );
+    // `getStitches()` expects index 0 = exterior ring, 1..n = holes.
+    this.indexedOutlines = [
+      {
+        geometry: shellRing,
+        lengthIndexedLine: new LengthIndexedLine(shellRing),
+      },
+      ...holeRings.map((h) => ({
+        geometry: h,
+        lengthIndexedLine: new LengthIndexedLine(h),
+      })),
+    ];
 
     if (options?.centerPosition) {
       this.centerPoint = geometryFactory.createPoint(
