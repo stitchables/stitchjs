@@ -19,6 +19,8 @@
   }
   vertices.push(vertices[0]);
 
+  vertices = Stitch.Math.Polyline.fromVectors(vertices).getRounded(10).vertices;
+
   // thread.addRun(new Stitch.Core.Runs.DoubleRope(vertices, {
   //   widthMm: 0.4,
   //   startPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
@@ -29,15 +31,16 @@
   //   startPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
   //   endPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
   // }));
-  // thread.addRun(new Stitch.Core.Runs.Bean(vertices, {
+  // thread.addRun(new Stitch.Core.Runs.EStitch(vertices, {
+  //   isFlipped: true,
   //   startPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
   //   endPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
   // }));
-  thread.addRun(new Stitch.Core.Runs.EStitch(vertices, {
-    isFlipped: true,
-    startPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
-    endPosition: vertices[Math.floor(vertices.length * Math.random())].add(Stitch.Math.Vector.fromAngle(2 * Math.PI * Math.random()).multiply(10)),
-  }));
+  thread.addRun(new Stitch.Core.Runs.Bean(
+    vertices,
+    new Stitch.Math.Vector(0, 0),
+    new Stitch.Math.Vector(400, 400),
+  ));
 
   let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
   canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');

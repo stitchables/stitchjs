@@ -1,0 +1,95 @@
+<!doctype html>
+<html>
+<head>
+  <title>Polygon Path Finder Test</title>
+  <script src="../dist/stitch.global.js"></script>
+  <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
+  <script src="https://cdn.jsdelivr.net/npm/p5@2.2.2/lib/p5.js"></script>
+</head>
+<body>
+<script>
+
+  const shell = Stitch.Math.Polyline.fromArrays([
+    [102, 356], [24, 251], [32, 179], [84, 250], [58, 145], [80, 108], [127, 46],
+    [127, 102], [102, 140], [116, 164], [135, 188], [171, 151], [193, 106], [201, 73],
+    [233, 57], [232, 86], [225, 112], [240, 116], [256, 94], [279, 73], [320, 85],
+    [329, 118], [354, 173], [362, 228], [356, 266], [312, 211], [269, 190], [247, 206],
+    [227, 240], [228, 262], [243, 255], [246, 233], [256, 218], [282, 219], [312, 246],
+    [323, 268], [331, 301], [319, 325], [290, 356], [248, 362], [216, 357], [205, 337],
+    [199, 293], [189, 246], [172, 235], [152, 245], [139, 261], [138, 283], [146, 277],
+    [159, 257], [174, 256], [174, 274], [177, 302], [177, 336], [158, 358], [121, 366],
+    [102, 356]
+  ]).getRounded(10, 0.5).vertices;
+  const holes = [
+    [[142, 324], [142, 296], [121, 297], [108, 315], [125, 338], [142, 324]],
+    [[206, 139], [194, 150], [203, 166], [217, 146], [206, 139]],
+    [[234, 309], [234, 326], [260, 326], [286, 295], [286, 264], [254, 279], [234, 309]]
+  ].map(p => Stitch.Math.Polyline.fromArrays(p).getRounded(10, 0.5).vertices);
+
+  let skeleton, pathFinder;
+  let start = new Stitch.Math.Vector(50, 50);
+  let end = new Stitch.Math.Vector(350, 350);
+  let path = null;
+  async function setup() {
+    createCanvas(400, 400);
+    await Stitch.init();
+    const polygon = Stitch.Geometry.createPolygon(shell, holes);
+    skeleton = Stitch.Geometry.getStraightSkeleton(polygon);
+    pathFinder = new Stitch.Optimize.PolygonPathFinder(polygon);
+    path = pathFinder.findPath(start, end);
+  }
+
+  async function draw() {
+    background(0);
+
+    strokeWeight(1);
+    for (const polygon of skeleton.polygons) {
+      for (let i = 1; i < polygon.length + 1; i++) {
+        const prev = skeleton.vertices[polygon[i - 1]];
+        const curr = skeleton.vertices[polygon[i % polygon.length]];
+        if (prev[2] === 0 && curr[2] === 0) stroke(255, 0, 0);
+        else if (prev[2] === 0 || curr[2] === 0) stroke(255, 255, 0);
+        else stroke(0, 255, 0);
+        line(prev[0], prev[1], curr[0], curr[1]);
+      }
+    }
+
+    stroke(0, 255, 255);
+    strokeWeight(3);
+    for (let i = 1; i < path.length; i++) {
+      const prev = path[i - 1];
+      const curr = path[i];
+      line(prev.x, prev.y, curr.x, curr.y);
+    }
+
+    stroke(0);
+    strokeWeight(1);
+    fill(0, 255, 0);
+    circle(start.x, start.y, 7);
+
+    stroke(0);
+    strokeWeight(1);
+    fill(255, 0, 0);
+    circle(end.x, end.y, 7);
+
+  }
+
+  let selection = null;
+  async function mousePressed() {
+    if (dist(mouseX, mouseY, start.x, start.y) < 15) selection = "start";
+    else if (dist(mouseX, mouseY, end.x, end.y) < 15) selection = "end";
+  }
+
+  async function mouseDragged() {
+    if (selection === "start") start = new Stitch.Math.Vector(mouseX, mouseY);
+    else if (selection === "end") end = new Stitch.Math.Vector(mouseX, mouseY);
+    path = pathFinder.findPath(start, end);
+  }
+
+  async function mouseReleased() {
+    selection = null;
+  }
+
+</script>
+</body>
+</html>

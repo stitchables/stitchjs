@@ -84,22 +84,7 @@ export class CircularFill implements IRun {
   }
 
   getStitches(pixelsPerMm: number): Stitch[] {
-    // const centerPoint = geometryFactory.createPoint(this.centerPosition);
-    // const maxSpiralRadius = DiscreteHausdorffDistance.distance(this.polygon, centerPoint);
-    // const rowSpacingPx = this.rowSpacingMm * pixelsPerMm;
-    // const stitchSpacingPx = this.stitchLengthMm * pixelsPerMm;
-    //
-    // const lineMerger = new LineMerger();
-    // const radius = maxSpiralRadius + 4 * rowSpacingPx;
-    // const spacing = 2 * rowSpacingPx;
-    // const sampling = stitchSpacingPx;
-    // lineMerger.add(this.getSpiral(radius, spacing, sampling, 0));
-    // lineMerger.add(this.getSpiral(radius, spacing, sampling, Math.PI));
-    // const spiral = lineMerger.getMergedLineStrings().toArray()[0];
-    // const spiralSegments = LineStringExtracter.getGeometry(OverlayOp.intersection(this.polygon, spiral));
-
     const spiralSegments = this.getSpiralSegments(pixelsPerMm);
-
     const fillStitchGraph = this.buildFillStitchGraph(spiralSegments);
     const travelGraph = this.buildTravelGraph(fillStitchGraph, pixelsPerMm);
     const path = this.findStitchPath(fillStitchGraph, travelGraph);
@@ -109,147 +94,216 @@ export class CircularFill implements IRun {
   }
 
   getSpiralSegments(pixelsPerMm: number): MultiLineString {
-    const rowSpacing = this.rowSpacingMm * pixelsPerMm;
-    const sampleSpacing = this.stitchLengthMm * pixelsPerMm;
-
     const centerPoint = geometryFactory.createPoint(this.centerPosition);
-    const isCovered = this.polygon.covers(centerPoint);
-    const minRadius = this.polygon.distance(centerPoint);
-    const maxRadius = DiscreteHausdorffDistance.distance(this.polygon, centerPoint);
+    const rowSpacing = 0.5 * this.rowSpacingMm * pixelsPerMm;
+    const sampleSpacing = this.stitchLengthMm * pixelsPerMm;
+    const minRadius = Math.max(this.polygon.distance(centerPoint) - 2 * rowSpacing, 0);
+    const maxRadius =
+      DiscreteHausdorffDistance.distance(this.polygon, centerPoint) + 2 * rowSpacing;
 
-    function normalizeAngle(theta: number): number {
-      const twoPi = 2 * Math.PI;
-      theta = theta % twoPi;
-      return theta < 0 ? theta + twoPi : theta;
-    }
-
-    function minimalSweepInterval(P: Coordinate, Qs: Coordinate[]) {
-      if (Qs.length === 1) {
-        const a = normalizeAngle(Math.atan2(Qs[0].y - P.y, Qs[0].x - P.x));
-        return { startAngle: a, endAngle: a, sweepAngle: 0 };
-      }
-
-      const angles = Qs.map((Q) => normalizeAngle(Math.atan2(Q.y - P.y, Q.x - P.x))).sort(
-        (a, b) => a - b,
-      );
-
-      let maxGap = -1;
-      let gapStartIndex = 0;
-
-      for (let i = 0; i < angles.length; i++) {
-        const a = angles[i];
-        const b = i + 1 < angles.length ? angles[i + 1] : angles[0] + 2 * Math.PI;
-        const gap = b - a;
-        if (gap > maxGap) {
-          maxGap = gap;
-          gapStartIndex = i;
-        }
-      }
-
-      const startAngle = angles[(gapStartIndex + 1) % angles.length];
-      const endAngle = angles[gapStartIndex];
-      const sweepAngle = 2 * Math.PI - maxGap;
-
-      return { startAngle, endAngle, sweepAngle };
-    }
-
-    const { startAngle, sweepAngle } = isCovered
-      ? { startAngle: 0, sweepAngle: 2 * Math.PI }
-      : minimalSweepInterval(
-          this.centerPosition,
-          this.polygon.getExteriorRing().getCoordinates(),
+    const left = [];
+    const right = [];
+    let r = Math.max(minRadius, 2 * Math.PI * rowSpacing);
+    let theta = r / (2 * rowSpacing);
+    let checkSagitta = true;
+    while (r < maxRadius) {
+      if (checkSagitta) {
+        const dTheta = this.findMaxDTheta(
+          0,
+          2 * rowSpacing,
+          theta,
+          rowSpacing,
+          sampleSpacing,
         );
-    const sagitta = 0.5 * rowSpacing + (sampleSpacing * sampleSpacing) / (8 * rowSpacing);
-
-    const segments = [];
-    if (isCovered) {
-      const leftArm = [];
-      const rightArm = [];
-      for (
-        let r = Math.max(minRadius, sagitta), i = 0;
-        r < maxRadius;
-        r += 2 * rowSpacing, i++
-      ) {
-        // const countSamples = Math.max(
-        //   Math.round(sweepAngle * (r + 2 * rowSpacing) / sampleSpacing),
-        //   Math.ceil(2 * Math.PI / Math.acos(-rowSpacing / (r + 2 * rowSpacing) + 1))
-        // );
-        const countSamples = Math.round(
-          (sweepAngle * (r + 2 * rowSpacing)) / sampleSpacing,
-        );
-        for (let i = 0; i < countSamples; i++) {
-          const a = Utils.map(i, 0, countSamples, 0, sweepAngle);
-          const w = a / (2 * Math.PI);
-          const v1 = Vector.fromAngle(startAngle + a).multiply((1 - w) * r);
-          const v2 = Vector.fromAngle(startAngle + a).multiply(w * (r + 2 * rowSpacing));
-          const v = v1.copy().add(v2);
-          leftArm.push(
-            new Coordinate(v.x + this.centerPosition.x, v.y + this.centerPosition.y),
-          );
-          rightArm.push(
-            new Coordinate(-v.x + this.centerPosition.x, -v.y + this.centerPosition.y),
-          );
+        if (dTheta <= 1e-10) break;
+        if (
+          this.spiralArcLengthExact(0, 2 * rowSpacing, theta, theta + dTheta) >
+          0.9 * sampleSpacing
+        ) {
+          checkSagitta = false;
         }
+        theta += dTheta;
+      } else {
+        theta += sampleSpacing / (2 * rowSpacing * Math.sqrt(1 + theta * theta));
       }
-      rightArm.reverse();
-      const intersection = this.polygon.intersection(
-        geometryFactory.createLineString([...rightArm, ...leftArm]),
+      r = 2 * rowSpacing * theta;
+
+      const x = r * Math.cos(theta);
+      const y = r * Math.sin(theta);
+      left.push(new Coordinate(x + this.centerPosition.x, y + this.centerPosition.y));
+      right.unshift(
+        new Coordinate(-x + this.centerPosition.x, -y + this.centerPosition.y),
       );
-      for (let i = 0; i < intersection.getNumGeometries(); i++) {
-        segments.push(intersection.getGeometryN(i));
-      }
+    }
+    const lineStrings = [];
+    if (minRadius === 0) {
+      lineStrings.push(geometryFactory.createLineString([...right, ...left]));
     } else {
-      const lineMerger = new LineMerger();
-      for (let r = minRadius - rowSpacing; r <= maxRadius; r += rowSpacing) {
-        const countSamples = Math.max(
-          Math.round((sweepAngle * (r + 2 * rowSpacing)) / sampleSpacing),
-          Math.ceil((2 * Math.PI) / Math.acos(-rowSpacing / (r + 2 * rowSpacing) + 1)),
-        );
-        const segment = [];
-        for (let i = 0; i < countSamples; i++) {
-          const a = Utils.map(i, 0, countSamples - 1, 0, sweepAngle);
-          const w = a / (2 * Math.PI);
-          const v1 = Vector.fromAngle(startAngle + a).multiply((1 - w) * r);
-          const v2 = Vector.fromAngle(startAngle + a).multiply(w * (r + 2 * rowSpacing));
-          const v = v1.add(v2);
-          segment.push(
-            new Coordinate(v.x + this.centerPosition.x, v.y + this.centerPosition.y),
-          );
-        }
-        // const intersection: Geometry = this.polygon.intersection(geometryFactory.createLineString(segment));
-        lineMerger.add(
-          OverlayOp.overlayOp(
-            this.polygon,
-            geometryFactory.createLineString(segment),
-            OverlayOp.INTERSECTION,
-          ),
-        );
-      }
-      segments.push(...lineMerger.getMergedLineStrings().toArray());
+      lineStrings.push(geometryFactory.createLineString(right));
+      lineStrings.push(geometryFactory.createLineString(left));
     }
-    return geometryFactory.createMultiLineString(segments);
+    return OverlayOp.overlayOp(
+      this.polygon,
+      geometryFactory.createMultiLineString(lineStrings),
+      OverlayOp.INTERSECTION,
+    );
   }
 
-  // getSpiral(
-  //   radius: number,
-  //   spacing: number,
-  //   sampling: number,
-  //   offset: number,
-  // ): LineString {
-  //   let [theta, r] = [0, spacing];
-  //   const points = [this.centerPosition];
-  //   while (r <= radius) {
-  //     const dr_dtheta = spacing / (2 * Math.PI);
-  //     const dtheta = sampling / Math.sqrt(r * r + dr_dtheta * dr_dtheta);
-  //     const maxDtheta = 2 * Math.acos(Math.max(Math.min(1 - (0.4 * spacing) / r, 1), -1));
-  //     theta = theta + Math.min(dtheta, maxDtheta);
-  //     r = (spacing * theta) / (2 * Math.PI);
-  //     const xr = r * Math.cos(theta + offset) + this.centerPosition.x;
-  //     const yr = r * Math.sin(theta + offset) + this.centerPosition.y;
-  //     points.push(new Coordinate(xr, yr));
-  //   }
-  //   return geometryFactory.createLineString(points);
-  // }
+  archimedeanPoint(a: number, b: number, theta: number): Point {
+    const r = a + b * theta;
+    return geometryFactory.createPoint(
+      new Coordinate(r * Math.cos(theta), r * Math.sin(theta)),
+    );
+  }
+
+  goldenSectionMax(
+    f: (x: number) => number,
+    lo: number,
+    hi: number,
+    tol = 1e-9,
+    maxIter = 100,
+  ): { x: number; value: number } {
+    const gr = (Math.sqrt(5) - 1) / 2;
+
+    let c = hi - gr * (hi - lo);
+    let d = lo + gr * (hi - lo);
+    let fc = f(c);
+    let fd = f(d);
+
+    for (let i = 0; i < maxIter && Math.abs(hi - lo) > tol; i++) {
+      if (fc > fd) {
+        hi = d;
+        d = c;
+        fd = fc;
+        c = hi - gr * (hi - lo);
+        fc = f(c);
+      } else {
+        lo = c;
+        c = d;
+        fc = fd;
+        d = lo + gr * (hi - lo);
+        fd = f(d);
+      }
+    }
+
+    return fc > fd ? { x: c, value: fc } : { x: d, value: fd };
+  }
+
+  pointToLineDistance(p: Point, a: Point, b: Point): number {
+    const dx = b.getX() - a.getX();
+    const dy = b.getY() - a.getY();
+    const len = Math.hypot(dx, dy);
+    if (len === 0) return Math.hypot(p.getX() - a.getX(), p.getY() - a.getY());
+    return Math.abs(dx * (a.getY() - p.getY()) - (a.getX() - p.getX()) * dy) / len;
+  }
+
+  spiralSagittaExact(
+    a: number,
+    b: number,
+    theta1: number,
+    theta2: number,
+    samples = 48,
+    tol = 1e-9,
+  ): number {
+    if (theta2 < theta1) [theta1, theta2] = [theta2, theta1];
+
+    const p1 = this.archimedeanPoint(a, b, theta1);
+    const p2 = this.archimedeanPoint(a, b, theta2);
+
+    const distFn = (theta: number) =>
+      this.pointToLineDistance(this.archimedeanPoint(a, b, theta), p1, p2);
+
+    let bestIdx = 0;
+    let bestVal = -Infinity;
+    const ts: number[] = [];
+
+    for (let i = 0; i <= samples; i++) {
+      const t = theta1 + (theta2 - theta1) * (i / samples);
+      ts.push(t);
+      const v = distFn(t);
+      if (v > bestVal) {
+        bestVal = v;
+        bestIdx = i;
+      }
+    }
+
+    const lo = ts[Math.max(0, bestIdx - 1)];
+    const hi = ts[Math.min(samples, bestIdx + 1)];
+
+    return this.goldenSectionMax(distFn, lo, hi, tol, 100).value;
+  }
+
+  spiralArcLengthExact(a: number, b: number, theta1: number, theta2: number): number {
+    if (theta2 < theta1) [theta1, theta2] = [theta2, theta1];
+
+    // Special case: circle r = a
+    if (Math.abs(b) < 1e-14) {
+      return Math.abs(a * (theta2 - theta1));
+    }
+
+    const F = (theta: number) => {
+      const t = a + b * theta;
+      const s = Math.sqrt(t * t + b * b);
+      return (t * s + b * b * Math.asinh(t / b)) / (2 * b);
+    };
+
+    return Math.abs(F(theta2) - F(theta1));
+  }
+
+  findMaxDTheta(
+    a: number,
+    b: number,
+    theta: number,
+    maxSagitta: number,
+    maxArcLength: number,
+    options?: {
+      initialHi?: number;
+      tol?: number;
+      maxBinaryIter?: number;
+      sagittaSamples?: number;
+    },
+  ): number {
+    const initialHi = options?.initialHi ?? 0.05;
+    const tol = options?.tol ?? 1e-8;
+    const maxBinaryIter = options?.maxBinaryIter ?? 50;
+    const sagittaSamples = options?.sagittaSamples ?? 48;
+
+    const ok = (dTheta: number) => {
+      if (dTheta <= 0) return true;
+
+      const theta2 = theta + dTheta;
+
+      const arc = this.spiralArcLengthExact(a, b, theta, theta2);
+      if (arc > maxArcLength) return false;
+
+      const sag = this.spiralSagittaExact(a, b, theta, theta2, sagittaSamples);
+      if (sag > maxSagitta) return false;
+
+      return true;
+    };
+
+    // Grow upper bound until invalid
+    let lo = 0;
+    let hi = initialHi;
+
+    while (ok(hi)) {
+      lo = hi;
+      hi *= 2;
+      if (hi > 1e6) break;
+    }
+
+    // Binary search for largest feasible step
+    for (let i = 0; i < maxBinaryIter && hi - lo > tol; i++) {
+      const mid = 0.5 * (lo + hi);
+      if (ok(mid)) {
+        lo = mid;
+      } else {
+        hi = mid;
+      }
+    }
+
+    return lo;
+  }
 
   getClosestShapeOutlineIndex(pos: Point) {
     let [outlineIndex, minDistance] = [

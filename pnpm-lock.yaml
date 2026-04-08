@@ -15,8 +15,8 @@ dependencies:
     specifier: ^2.12.1
     version: 2.12.1
   straight-skeleton:
-    specifier: '1'
-    version: 1.1.0
+    specifier: 3.0.0
+    version: 3.0.0
 
 devDependencies:
   '@changesets/cli':
@@ -1435,8 +1435,8 @@ packages:
     resolution: {integrity: sha512-D9cPgkvLlV3t3IzL0D0YLvGA9Ahk4PcvVwUbN0dSGr1aP0Nrt4AEnTUbuGvquEC0mA64Gqt1fzirlRs5ibXx8g==}
     dev: true
 
-  /straight-skeleton@1.1.0:
-    resolution: {integrity: sha512-nbRx+Mky4aX3HNWsoz+JQZ2Pjy8ju5CFK9kHQ/D8PRSa1GYPJoLDgM50Ia5QD0G55hgWZFJujUCxRcSpYdKWtg==}
+  /straight-skeleton@3.0.0:
+    resolution: {integrity: sha512-XwL1vGE5L/S5BxWS9qEK4sKIo0BEzthKYkR9f9Yz/2Twtz/mIejc5khnTkEO12R2q/QndSsLnQ1gzsQ7STTSxw==}
     dev: false
 
   /strip-ansi@6.0.1:

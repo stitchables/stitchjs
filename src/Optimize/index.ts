@@ -1,7 +1,7 @@
-// import { getPathCovering } from './getPathCovering';
 import { joinPolylines } from './joinPolylines';
+import PolygonPathFinder from './PolygonPathFinder';
 
 export const Optimize = {
-  // getPathCovering,
+  PolygonPathFinder,
   joinPolylines,
 };
