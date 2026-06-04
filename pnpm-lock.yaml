@@ -8,6 +8,9 @@ dependencies:
   '@dagrejs/graphlib':
     specifier: ^4.0.1
     version: 4.0.1
+  edmonds-blossom:
+    specifier: ^1.0.0
+    version: 1.0.0
   graphlib:
     specifier: ^2.1.8
     version: 2.1.8
@@ -22,6 +25,9 @@ devDependencies:
   '@changesets/cli':
     specifier: ^2.27.6
     version: 2.29.8
+  '@types/edmonds-blossom':
+    specifier: ^1.0.4
+    version: 1.0.4
   '@types/graphlib':
     specifier: ^2.1.12
     version: 2.1.12
@@ -717,6 +723,10 @@ packages:
     dev: true
     optional: true
 
+  /@types/edmonds-blossom@1.0.4:
+    resolution: {integrity: sha512-fqvPg7o20+XDGsx6UrzKe9ZWidWy2GJxw9L4C0i/wwueEwwUbxmo7eDcrTAvj2568ZRYobauAJMYjCCNlQsYiQ==}
+    dev: true
+
   /@types/estree@1.0.8:
     resolution: {integrity: sha512-dWHzHa2WqEXI/O1E9OjrocMTKJl2mSrEolh1Iomrv6U+JuNwaHXsXx9bLu5gG7BUWFIN0skIQJQ/L1rIex4X6w==}
     dev: true
@@ -865,6 +875,10 @@ packages:
     dependencies:
       path-type: 4.0.0
     dev: true
+
+  /edmonds-blossom@1.0.0:
+    resolution: {integrity: sha512-wz18RgLg21nW4afc80d080fZuAjiaePfSoHje56aOiH8mO6O5Mc/VAv7s8bCBJkxsks37e0cYTS0dNirsQ4/rg==}
+    dev: false
 
   /enquirer@2.4.1:
     resolution: {integrity: sha512-rRqJg/6gd538VHvR3PSrdRBb/1Vy2YfzHqzvbhGIQpDRKIa4FgV/54b5Q1xYSxOOwKvjXweS26E0Q+nAMwp2pQ==}

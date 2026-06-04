@@ -10,6 +10,7 @@ import { TripleRope } from './TripleRope';
 import { Bean } from './Bean';
 import { EStitch } from './EStitch';
 import { CircularFill } from './CircularFill';
+import { Redwork } from './Redwork';
 
 export const Runs = {
   Run,
@@ -24,4 +25,5 @@ export const Runs = {
   Bean,
   EStitch,
   CircularFill,
+  Redwork,
 };

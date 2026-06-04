@@ -1,0 +1,272 @@
+<!doctype html>
+<html>
+<head>
+  <title>Polygon Path Finder Test</title>
+  <script src="../dist/stitch.global.js"></script>
+  <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
+  <script src="https://cdn.jsdelivr.net/npm/p5@2.2.2/lib/p5.js"></script>
+</head>
+<body>
+<script>
+
+  // const shell = Stitch.Math.Polyline.fromArrays([
+  //   [102, 356], [24, 251], [32, 179], [84, 250], [58, 145], [80, 108], [127, 46],
+  //   [127, 102], [102, 140], [116, 164], [135, 188], [171, 151], [193, 106], [201, 73],
+  //   [233, 57], [232, 86], [225, 112], [240, 116], [256, 94], [279, 73], [320, 85],
+  //   [329, 118], [354, 173], [362, 228], [356, 266], [312, 211], [269, 190], [247, 206],
+  //   [227, 240], [228, 262], [243, 255], [246, 233], [256, 218], [282, 219], [312, 246],
+  //   [323, 268], [331, 301], [319, 325], [290, 356], [248, 362], [216, 357], [205, 337],
+  //   [199, 293], [189, 246], [172, 235], [152, 245], [139, 261], [138, 283], [146, 277],
+  //   [159, 257], [174, 256], [174, 274], [177, 302], [177, 336], [158, 358], [121, 366],
+  //   [102, 356]
+  // ]).getRounded(10, 0.5).vertices;
+  // // ]).vertices;
+  // const holes = [
+  //   [[142, 324], [142, 296], [121, 297], [108, 315], [125, 338], [142, 324]],
+  //   [[206, 139], [194, 150], [203, 166], [217, 146], [206, 139]],
+  //   [[234, 309], [234, 326], [260, 326], [286, 295], [286, 264], [254, 279], [234, 309]]
+  // ].map(p => Stitch.Math.Polyline.fromArrays(p).getRounded(10, 0.5).vertices);
+  // // ].map(p => Stitch.Math.Polyline.fromArrays(p).vertices);
+
+  const shell = Stitch.Math.Polyline.fromArrays(
+    [
+      [440.00000000000006,130.1501626269853],[440.00000000000006,320],[360,320],[360,292.0370299964365],
+      [340.3146126168508,352.4497810529955],[268.2929028033014,362.00085967192575],[246.4569380370517,270.78991779507004],
+      [299.398242702428,229.77497843480782],[360,275.57751263330823],[360,109.86781032947857],
+      [336.31934135725965,150.8993467258762],[270.53672575488537,161.57422964794145],
+      [242.7460734241199,132.42588197374397],[240.72557149790512,79.34082193644159],[283.6471263591898,30.47804189286522],
+      [342.5348855797499,45.266861834459505],[360,83.59656684489399],[360,80],[435.64079530192754,80],
+      [474.0273122367791,26.401416935428312],[554.1334079575857,60.668251133956716],[554.9352352969685,80],
+      [661.6935833279562,80],[661.886233714024,79.01502139659736],[698.1102961408022,52.44449891110504],
+      [741.0025140429316,71.966499672699],[739.7020416430089,111.15416913085008],[720,133.8715798273249],
+      [720,239.63032431709968],[762.7900393042307,264.1367003837148],[749.6784518649673,361.41251712641815],
+      [670.8648923763332,378.3524652024763],[641.3931248027184,320],[536.8269091060159,320],
+      [522.5847449732174,338.71173598634886],[473.128566605405,333.48374958896204],[450.9910891130653,303.0319208266005],
+      [471.69164825441453,273.50937774641864],[480,267.61334987824466],[480,169.92242170915722],
+      [440.00000000000006,130.1501626269853]
+    ]
+  // ).getRounded(10, 0.5).vertices;
+  ).vertices;
+  const holes = [];
+
+
+  function createCircle(x, y, r) {
+    const shell = [];
+    for (let i = 0; i < 20; i++) {
+      const angle = 2 * Math.PI * i / 20;
+      shell.push(new Stitch.Math.Vector(x + r * Math.cos(angle), y + r * Math.sin(angle)));
+    }
+    shell.push(shell[0]);
+    return Stitch.Geometry.createPolygon(shell);
+  }
+
+  let isZoom = false;
+  let zoomScale = 3;
+  const polygon = Stitch.Geometry.createPolygon(shell, holes);
+  let start = { x: 800 * Math.random(), y: 800 * Math.random() };
+  let end = { x: 800 * Math.random(), y: 800 * Math.random() };
+  let startGeom = createCircle(start.x, start.y, 15);
+  let endGeom = createCircle(end.x, end.y, 15);
+  let pathFinder;
+  let path = null;
+
+  async function setup() {
+    createCanvas(800, 800);
+    await Stitch.init();
+    pathFinder = new Stitch.Optimize.NavMeshPolygonPathFinder(polygon, 10);
+    // path = pathFinder.findPath(
+    //   // new Stitch.Math.Vector(start.x, start.y),
+    //   // new Stitch.Math.Vector(end.x, end.y)
+    //   startGeom, endGeom
+    // );
+    path = pathFinder.findPath(startGeom, endGeom);
+  }
+
+  let point = null;
+  function mousePressed() {
+    if (dist(mouseX, mouseY, start.x, start.y) < 10) point = 'start';
+    else if (dist(mouseX, mouseY, end.x, end.y) < 10) point = 'end';
+  }
+  function mouseDragged() {
+    if (point === 'start') start = { x: mouseX, y: mouseY };
+    else if (point === 'end') end = { x: mouseX, y: mouseY };
+    startGeom = createCircle(start.x, start.y, 15);
+    endGeom = createCircle(end.x, end.y, 15);
+    // path = pathFinder.findPath(
+    //   // new Stitch.Math.Vector(start.x, start.y),
+    //   // new Stitch.Math.Vector(end.x, end.y)
+    //   startGeom, endGeom
+    // );
+    path = pathFinder.findPath(startGeom, endGeom);
+  }
+  function mouseReleased() { point = null; }
+
+  function keyPressed() {
+    if (key === ' ') {
+      isZoom = !isZoom;
+    } else if (key === 'ArrowLeft') {
+      zoomScale = max(zoomScale - 1, 2);
+    } else if (key === 'ArrowRight') {
+      zoomScale++;
+    } else {
+      console.log(key);
+    }
+  }
+
+  async function draw() {
+    background(0);
+
+    strokeWeight(1);
+    if (isZoom) {
+      translate(width / 2, height / 2);
+      scale(zoomScale, zoomScale);
+      translate(-mouseX, -mouseY);
+      strokeWeight(1 / zoomScale);
+    }
+
+
+
+    stroke(0, 255, 0);
+    noFill();
+    drawGeom(polygon);
+
+    stroke(255, 0, 0);
+    for (const e of pathFinder.graph.edges()) {
+      const v = pathFinder.graph.node(e.v);
+      const w = pathFinder.graph.node(e.w);
+      line(v.x, v.y, w.x, w.y);
+    }
+
+
+    // stroke(0, 0, 255);
+    // for (const e of pathFinder.tGraph.edges()) {
+    //   const v = pathFinder.tGraph.node(e.v).center;
+    //   const w = pathFinder.tGraph.node(e.w).center;
+    //   line(v.x, v.y, w.x, w.y);
+    // }
+
+    // stroke(255, 50);
+    // noFill();
+    // drawGeom(pathFinder.polygons);
+    //
+    // stroke(255, 0, 0);
+    // for (const { v, w } of pathFinder.spineGraph.edges()) {
+    //   const p = pathFinder.spineGraph.node(v);
+    //   const q = pathFinder.spineGraph.node(w);
+    //   line(p.x, p.y, q.x, q.y);
+    // }
+
+    // if (path.path) {
+    //   stroke(0, 255, 255);
+    //   drawGeom(path.path);
+    // }
+
+    fill(0, 255, 255, 200);
+    if (path) {
+      // for (const n of path.nodes) {
+      //   const t = pathFinder.tGraph.node(n);
+      //   beginShape();
+      //   vertex(t.coords[0].x, t.coords[0].y);
+      //   vertex(t.coords[1].x, t.coords[1].y);
+      //   vertex(t.coords[2].x, t.coords[2].y);
+      //   endShape(CLOSE);
+      // }
+      //
+      // for (let i = 1; i < path.nodes.length; i++) {
+      //   const from = path.nodes[i - 1];
+      //   const to = path.nodes[i];
+      //   const edge = pathFinder.tGraph.edge(from, to);
+      //   stroke(0, 255, 0);
+      //   fill(0, 255, 0);
+      //   circle(edge.sharedEdge[0].x, edge.sharedEdge[0].y, 3);
+      //   stroke(0, 0, 255);
+      //   fill(0, 0, 255);
+      //   circle(edge.sharedEdge[1].x, edge.sharedEdge[1].y, 3);
+      // }
+
+      stroke(255);
+      noFill();
+      drawGeom(path);
+    }
+
+    // stroke(0, 255, 0);
+    // fill(0, 255, 0);
+    // for (let c of path.s) {
+    //   circle(c.x, c.y, 3);
+    // }
+    // stroke(0, 255, 0);
+    // fill(0, 255, 0);
+    // for (let c of path.t) {
+    //   circle(c.x, c.y, 3);
+    // }
+
+    stroke(0, 255, 0);
+    fill(0, 255, 0);
+    circle(start.x, start.y, 5);
+    stroke(255, 0, 0);
+    fill(255, 0, 0);
+    circle(end.x, end.y, 5);
+    stroke(0, 255, 0);
+    fill(0, 255, 0, 150);
+    drawGeom(startGeom);
+    stroke(255, 0, 0);
+    fill(255, 0, 0, 150);
+    drawGeom(endGeom);
+
+    // stroke(255, 255, 0);
+    // for (const ls of pathFinder.ribs) {
+    //   drawGeom(ls);
+    // }
+
+  }
+
+  function drawGeom(g) {
+    let geomType = g.getGeometryType();
+    if (geomType === 'MultiLineString') {
+      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+        drawGeom(g.getGeometryN(i));
+      }
+    } else if (geomType === 'LineString' || geomType === 'LinearRing') {
+      beginShape();
+      for (let i = 0, n = g.getNumPoints(); i < n; i++) {
+        const p = g.getPointN(i);
+        vertex(p.getX(), p.getY());
+      }
+      endShape();
+    } else if (geomType === 'Polygon') {
+      const shell = g.getExteriorRing();
+      beginShape();
+      for (let i = 0, n = shell.getNumPoints(); i < n; i++) {
+        const p = shell.getPointN(i);
+        vertex(p.getX(), p.getY());
+      }
+      for (let i = 0, n = g.getNumInteriorRing(); i < n; i++) {
+        const hole = g.getInteriorRingN(i);
+        beginContour();
+        for (let j = 0, m = hole.getNumPoints(); j < m; j++) {
+          const p = hole.getPointN(j);
+          vertex(p.getX(), p.getY());
+        }
+        endContour(CLOSE);
+      }
+      endShape(CLOSE);
+    } else if (geomType === 'GeometryCollection') {
+      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+        drawGeom(g.getGeometryN(i));
+      }
+    } else if (geomType === 'Point') {
+      const coord = g.getCoordinate();
+      circle(coord.x, coord.y, 5);
+    } else if (geomType === 'MultiPolygon') {
+      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+        drawGeom(g.getGeometryN(i));
+      }
+    }
+    else {
+      console.log(`Unrecognized Geometry Type: ${geomType}`);
+    }
+  }
+
+</script>
+</body>
+</html>

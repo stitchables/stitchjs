@@ -16,6 +16,7 @@ export function resample(
     const resampled = resampleEvenly(split, lengthPx, tolerancePx);
     runCoords.push(...resampled.map((v) => new Coordinate(v.x, v.y)));
   }
+  if (runCoords.length === 1) runCoords.push(runCoords[0]);
   return geometryFactory.createLineString(runCoords);
 }
 
@@ -125,11 +126,11 @@ function cutSegmentWithAngle(
   const d = b.subtract(a);
   const c = Vector.fromAngle(angle);
   const t = (p.y * c.x - p.x * c.y) / (d.x * c.y - d.y * c.x);
-  if (t < 1e-7 || t > 1 + 1e-7) {
-    console.warn(
-      `cutSegmentWithAngle returned a parameter of ${t} with points ${p} ${b.subtract(origin)} and cut line ${c}`,
-    );
-  }
+  // if (t < 1e-7 || t > 1 + 1e-7) {
+  //   console.warn(
+  //     `cutSegmentWithAngle returned a parameter of ${t} with points ${p} ${b.subtract(origin)} and cut line ${c}`,
+  //   );
+  // }
   return a.add(d.multiply(t));
 }
 
@@ -141,9 +142,9 @@ function cutSegmentWithCircle(origin: Vector, r: number, a: Vector, b: Vector): 
   const r2 = r * r;
   const pd = p.dot(d);
   const t = (Math.sqrt(pd * pd + r2 * d2 - p2 * d2) - pd) / d2;
-  if (t < 1e-7 || t > 1 + 1e-7) {
-    console.warn(`cutSegmentWithCircle returned a parameter of ${t}`);
-  }
+  // if (t < 1e-7 || t > 1 + 1e-7) {
+  //   console.warn(`cutSegmentWithCircle returned a parameter of ${t}`);
+  // }
   return a.add(d.multiply(t));
 }
 

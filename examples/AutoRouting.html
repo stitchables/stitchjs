@@ -4,61 +4,406 @@
   <title>AutoFill Example</title>
   <script src="../dist/stitch.global.js"></script>
   <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
-<!--  <script src="https://cdn.jsdelivr.net/npm/p5@1.11.5/lib/p5.js"></script>-->
+  <script src="https://cdn.jsdelivr.net/npm/p5@2.2.2/lib/p5.js"></script>
 </head>
 <body>
 <script>
 
-  let pattern = new Stitch.Core.Pattern(800, 800);
+  const rng = new Stitch.Math.Random();
+  console.log('rng hash: ', rng.hash);
+  // const rng = new Stitch.Math.Random('0x8e3c0961d07fd1f733c9528533e1d732ebf0bb23b91509f79237ad14fbb79eca');
 
+  // const rng = new Stitch.Math.Random('0x6ccceae59976f5a550ddec4b951bd69dca64d8cd5d8891addf5399cdc9ea0c37');
+  // const rng = new Stitch.Math.Random('0x80a4224abcab274f20f98b94e9c1d456963b25fb5ca8c2818d724b1c94b020b0');
+  // const rng = new Stitch.Math.Random('0x6bb07fc1c1489ba59a220416f65895f41872a55acb906fd45b832e758bd63aff');
+  // const rng = new Stitch.Math.Random('0xbb9fc0c9876fbb03d79fc404dcf715a07869a8f47d027b7389afa66740111634');
+
+  let pattern = new Stitch.Core.Pattern(800, 800);
   let thread = pattern.addThread(200, 0, 0);
 
   const autoRuns = [];
-  const radius = 0.9 * Math.min(pattern.widthPx, pattern.heightPx) / 6;
-  for (let i = 0; i < 3; i++) {
-    for (let j = 0; j < 3; j++) {
-      const cx = Stitch.Math.Utils.map(i, 0, 3, 0, pattern.widthPx) + pattern.widthPx / 6;
-      const cy = Stitch.Math.Utils.map(j, 0, 3, 0, pattern.heightPx) + pattern.heightPx / 6;
-      const angleOffset = 0.5 * Math.PI * Math.random();
+  const autoRouteOptions = {
+    entry: new Stitch.Math.Vector(0, 0),
+    exit: new Stitch.Math.Vector(800, 800),
+    travelPolygons: [],
+  };
+
+  // autoRuns.push(new Stitch.Core.RoutedRuns.RoutedFill({
+  //   shell: [
+  //     new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.1 * pattern.heightPx),
+  //     new Stitch.Math.Vector(0.9 * pattern.widthPx + Math.random(), 0.1 * pattern.heightPx + Math.random()),
+  //     new Stitch.Math.Vector(0.9 * pattern.widthPx + Math.random(), 0.9 * pattern.heightPx + Math.random()),
+  //     new Stitch.Math.Vector(0.1 * pattern.widthPx + Math.random(), 0.9 * pattern.heightPx + Math.random()),
+  //     new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.1 * pattern.heightPx),
+  //   ],
+  //   holes: [
+  //     [
+  //       new Stitch.Math.Vector( 0.12 * pattern.widthPx, 0.48 * pattern.heightPx),
+  //       new Stitch.Math.Vector( 0.88 * pattern.widthPx + Math.random(), 0.48 * pattern.heightPx + Math.random()),
+  //       new Stitch.Math.Vector( 0.88 * pattern.widthPx + Math.random(), 0.52 * pattern.heightPx + Math.random()),
+  //       new Stitch.Math.Vector( 0.12 * pattern.widthPx + Math.random(), 0.52 * pattern.heightPx + Math.random()),
+  //       new Stitch.Math.Vector( 0.12 * pattern.widthPx, 0.48 * pattern.heightPx),
+  //     ],
+  //     // [
+  //     //   new Stitch.Math.Vector( 0.12 * pattern.widthPx, 0.25 * pattern.heightPx),
+  //     //   new Stitch.Math.Vector( 0.5 * pattern.widthPx + Math.random(), 0.12 * pattern.heightPx + Math.random()),
+  //     //   new Stitch.Math.Vector( 0.88 * pattern.widthPx + Math.random(), 0.25 * pattern.heightPx + Math.random()),
+  //     //   new Stitch.Math.Vector( 0.5 * pattern.widthPx + Math.random(), 0.46 * pattern.heightPx + Math.random()),
+  //     //   new Stitch.Math.Vector( 0.12 * pattern.widthPx, 0.25 * pattern.heightPx),
+  //     // ],
+  //     // [
+  //     //   new Stitch.Math.Vector( 0.15 * pattern.widthPx, 0.75 * pattern.heightPx),
+  //     //   new Stitch.Math.Vector( 0.25 * pattern.widthPx, 0.65 * pattern.heightPx),
+  //     //   new Stitch.Math.Vector( 0.35 * pattern.widthPx, 0.75 * pattern.heightPx),
+  //     //   new Stitch.Math.Vector( 0.25 * pattern.widthPx, 0.85 * pattern.heightPx),
+  //     //   new Stitch.Math.Vector( 0.15 * pattern.widthPx, 0.75 * pattern.heightPx),
+  //     // ]
+  //   ]
+  // }, { angle: Math.PI * Math.random(), rowSpacingMm: 0.4, travelLengthMm: 3, underlays: [{ insetMm: 5 }] }));
+
+  const countSize = 4;
+  for (let i = 0; i < countSize; i++) {
+    for (let j = 0; j < countSize; j++) {
+      const radius = rng.random_num(0.2, 1.2) * Math.min(pattern.widthPx, pattern.heightPx) / (2 * countSize);
+      const cx = Stitch.Math.Utils.map(i, 0, countSize, 0, pattern.widthPx) + pattern.widthPx / (2 * countSize);
+      const cy = Stitch.Math.Utils.map(j, 0, countSize, 0, pattern.heightPx) + pattern.heightPx / (2 * countSize);
+      const angleOffset = 0.5 * Math.PI * rng.random_dec();
       const shell = new Stitch.Math.Polyline(true);
-      for (let k = 0; k < 4; k++) {
-        const angle = Stitch.Math.Utils.map(k, 0, 4, 0, 2 * Math.PI) + angleOffset;
-        shell.addVertex(radius * Math.cos(angle) + cx, radius * Math.sin(angle) + cy);
+      const sides = rng.random_int(4, 7);
+      for (let k = 0; k < sides; k++) {
+        const angle = Stitch.Math.Utils.map(k, 0, sides, 0, 2 * Math.PI) + angleOffset;
+        const xRand = Stitch.Math.Utils.map(rng.random_dec(), 0, 1, -0.2 * radius, 0.2 * radius);
+        const yRand = Stitch.Math.Utils.map(rng.random_dec(), 0, 1, -0.2 * radius, 0.2 * radius);
+        shell.addVertex(radius * Math.cos(angle) + cx + xRand, radius * Math.sin(angle) + cy + yRand);
       }
       shell.addVertex(shell.vertices[0].x, shell.vertices[0].y);
-      autoRuns.push(new Stitch.Core.RoutedRuns.RoutedFill(shell.vertices, [], { rowSpacingMm: 0.4, travelLengthMm: 3 }));
+      const polygon = { shell: shell.vertices };
+      const fillOptions = {
+        angle: Math.PI * rng.random_dec(),
+        rowSpacingMm: 0.4,
+        stitchLengthMm: 4,
+        travelLengthMm: 3,
+        underlays: [{ insetMm: 1 }],
+      }
+      autoRuns.push(new Stitch.Core.RoutedRuns.RoutedFill(polygon, fillOptions));
     }
   }
 
-  // const [x0, x1, x2, x3] = [0.05 * pattern.widthPx, 1 / 3 * pattern.widthPx, 2 / 3 * pattern.widthPx, 0.95 * pattern.widthPx];
-  // const [y0, y1, y2, y3] = [0.05 * pattern.heightPx, 1 / 3 * pattern.heightPx, 2 / 3 * pattern.heightPx, 0.95 * pattern.heightPx];
-  // thread.addRun(new Stitch.Core.Runs.Satin(Stitch.Math.Polyline.fromObjects([{ x: x1, y: y0 }, { x: x1, y: y3 }]), 4, 0.2));
-  // thread.addRun(new Stitch.Core.Runs.Satin(Stitch.Math.Polyline.fromObjects([{ x: x2, y: y0 }, { x: x2, y: y3 }]), 4, 0.2));
-  // thread.addRun(new Stitch.Core.Runs.Satin(Stitch.Math.Polyline.fromObjects([{ y: y1, x: x0 }, { y: y1, x: x3 }]), 4, 0.2));
-  // thread.addRun(new Stitch.Core.Runs.Satin(Stitch.Math.Polyline.fromObjects([{ y: y2, x: x0 }, { y: y2, x: x3 }]), 4, 0.2));
 
-  const autoRoute = new Stitch.Core.RoutedRuns.AutoRoute(autoRuns, new Stitch.Math.Vector(0, 0), new Stitch.Math.Vector(pattern.widthPx, pattern.heightPx));
-  thread.addRun(autoRoute);
+  if (rng.random_dec() < 0.5) {
 
-  let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 3);
-  canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
-  document.body.append(canvas);
+    autoRouteOptions.travelPolygons.push(
+      {
+        shell: [
+          new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.1 * pattern.heightPx),
+          new Stitch.Math.Vector(0.4 * pattern.widthPx, 0.1 * pattern.heightPx),
+          new Stitch.Math.Vector(0.4 * pattern.widthPx, 0.4 * pattern.heightPx),
+          new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.4 * pattern.heightPx),
+          new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.1 * pattern.heightPx),
+        ]
+      },
+    );
+  }
+  if (rng.random_dec() < 0.5) {
+    autoRouteOptions.travelPolygons.push(
+      {
+        shell: [
+          new Stitch.Math.Vector(0.6 * pattern.widthPx, 0.1 * pattern.heightPx),
+          new Stitch.Math.Vector(0.9 * pattern.widthPx, 0.1 * pattern.heightPx),
+          new Stitch.Math.Vector(0.9 * pattern.widthPx, 0.4 * pattern.heightPx),
+          new Stitch.Math.Vector(0.6 * pattern.widthPx, 0.4 * pattern.heightPx),
+          new Stitch.Math.Vector(0.6 * pattern.widthPx, 0.1 * pattern.heightPx),
+        ]
+      },
+    );
+  }
+  if (rng.random_dec() < 0.5) {
 
-  window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
-    canvas.remove();
-    canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
-    canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
-    document.body.append(canvas);
-  }, 10));
+    autoRouteOptions.travelPolygons.push(
+      {
+        shell: [
+          new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.6 * pattern.heightPx),
+          new Stitch.Math.Vector(0.4 * pattern.widthPx, 0.6 * pattern.heightPx),
+          new Stitch.Math.Vector(0.4 * pattern.widthPx, 0.9 * pattern.heightPx),
+          new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.9 * pattern.heightPx),
+          new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.6 * pattern.heightPx),
+        ]
+      },
+    );
+  }
+  if (rng.random_dec() < 0.5) {
+    autoRouteOptions.travelPolygons.push(
+      {
+        shell: [
+          new Stitch.Math.Vector(0.6 * pattern.widthPx, 0.6 * pattern.heightPx),
+          new Stitch.Math.Vector(0.9 * pattern.widthPx, 0.6 * pattern.heightPx),
+          new Stitch.Math.Vector(0.9 * pattern.widthPx, 0.9 * pattern.heightPx),
+          new Stitch.Math.Vector(0.6 * pattern.widthPx, 0.9 * pattern.heightPx),
+          new Stitch.Math.Vector(0.6 * pattern.widthPx, 0.6 * pattern.heightPx),
+        ]
+      },
+    );
+  }
+  if (rng.random_dec() < 0.5) {
+    autoRouteOptions.travelPolygons.push(
+      {
+        shell: [
+          new Stitch.Math.Vector(0.45 * pattern.widthPx, 0.1 * pattern.heightPx),
+          new Stitch.Math.Vector(0.55 * pattern.widthPx, 0.1 * pattern.heightPx),
+          new Stitch.Math.Vector(0.55 * pattern.widthPx, 0.4 * pattern.heightPx),
+          new Stitch.Math.Vector(0.45 * pattern.widthPx, 0.4 * pattern.heightPx),
+          new Stitch.Math.Vector(0.45 * pattern.widthPx, 0.1 * pattern.heightPx),
+        ]
+      },
+    );
+  }
+
+  autoRouteOptions.travelPolygons.push(
+    {
+      shell: [
+        new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.45 * pattern.heightPx),
+        new Stitch.Math.Vector(0.9 * pattern.widthPx, 0.45 * pattern.heightPx),
+        new Stitch.Math.Vector(0.9 * pattern.widthPx, 0.55 * pattern.heightPx),
+        new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.55 * pattern.heightPx),
+        new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.45 * pattern.heightPx),
+      ]
+    },
+  );
+
+  // autoRouteOptions.travelPolygons = [
+    // {
+    //   shell: [
+    //     new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.1 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.4 * pattern.widthPx, 0.1 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.4 * pattern.widthPx, 0.4 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.4 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.1 * pattern.heightPx),
+    //   ]
+    // },
+    // {
+    //   shell: [
+    //     new Stitch.Math.Vector(0.6 * pattern.widthPx, 0.1 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.9 * pattern.widthPx, 0.1 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.9 * pattern.widthPx, 0.4 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.6 * pattern.widthPx, 0.4 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.6 * pattern.widthPx, 0.1 * pattern.heightPx),
+    //   ]
+    // },
+    // {
+    //   shell: [
+    //     new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.6 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.4 * pattern.widthPx, 0.6 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.4 * pattern.widthPx, 0.9 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.9 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.6 * pattern.heightPx),
+    //   ]
+    // },
+    // {
+    //   shell: [
+    //     new Stitch.Math.Vector(0.6 * pattern.widthPx, 0.6 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.9 * pattern.widthPx, 0.6 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.9 * pattern.widthPx, 0.9 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.6 * pattern.widthPx, 0.9 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.6 * pattern.widthPx, 0.6 * pattern.heightPx),
+    //   ]
+    // },
+    //
+    // {
+    //   shell: [
+    //     new Stitch.Math.Vector(0.45 * pattern.widthPx, 0.1 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.55 * pattern.widthPx, 0.1 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.55 * pattern.widthPx, 0.4 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.45 * pattern.widthPx, 0.4 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.45 * pattern.widthPx, 0.1 * pattern.heightPx),
+    //   ]
+    // },
+
+
+
+
+    // {
+    //   shell: [
+    //     new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.45 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.9 * pattern.widthPx, 0.45 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.9 * pattern.widthPx, 0.55 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.55 * pattern.heightPx),
+    //     new Stitch.Math.Vector(0.1 * pattern.widthPx, 0.45 * pattern.heightPx),
+    //   ]
+    // },
+  // ];
+
+
+  let autoRoute, stitches;
+  let counter = 0;
+  async function setup() {
+    createCanvas(800, 800);
+    await Stitch.init();
+    // autoRoute = autoRuns[0].getUnderlayAutoRoute(5, autoRouteOptions);
+    try {
+
+      const topRuns = [];
+      for (let p of autoRouteOptions.travelPolygons) {
+        const polygon = { shell: [] };
+        for (let i = 0; i < p.shell.length; i++) {
+          polygon.shell.push(new Stitch.Math.Vector(p.shell[i].x, p.shell[i].y));
+        }
+        topRuns.push(new Stitch.Core.RoutedRuns.RoutedFill(polygon, { angle: Math.PI * rng.random_dec() }));
+      }
+      const topThread = pattern.addThread(0, 0, 0);
+      if (topRuns.length > 0) {
+        const topAutoRoute = new Stitch.Core.RoutedRuns.AutoRoute(topRuns, {
+          entry: new Stitch.Math.Vector(0, 0),
+          exit: new Stitch.Math.Vector(800, 800)
+        });
+        topThread.addRun(topAutoRoute);
+      }
+
+      autoRoute = new Stitch.Core.RoutedRuns.AutoRoute(autoRuns, autoRouteOptions);
+      thread.addRun(autoRoute);
+      stitches = autoRoute.getStitches(5);
+    } catch (e) {
+      console.error(e);
+    }
+  }
+
+  async function draw() {
+    background(0);
+
+    fill(255, 0, 0);
+    noStroke();
+    for (let polygon of autoRouteOptions.travelPolygons) {
+      drawGeom(Stitch.Geometry.createPolygon(polygon.shell, polygon.holes));
+    }
+
+    // run boundaries
+    fill(0, 255, 0);
+    noStroke();
+    for (let autoRun of autoRuns) {
+      drawGeom(autoRun.polygon);
+    }
+
+    // for (const nodeId of autoRoute.graph.nodes()) {
+    //   const { runs, travels, freeSpace } = autoRoute.graph.node(nodeId);
+    //   // travel boundaries
+    //   fill(255, 0, 0);
+    //   noStroke();
+    //   for (const travel of travels) drawGeom(travel);
+    //   // run boundaries
+    //   fill(0, 255, 0);
+    //   noStroke();
+    //   for (const { boundary } of runs) drawGeom(boundary);
+    //   // component boundary
+    //   noFill();
+    //   stroke(255);
+    //   strokeWeight(2);
+    //   drawGeom(freeSpace);
+    // }
+
+    // for (const edgeId of autoRoute.graph.edges()) {
+    //   const { p, q, weight } = autoRoute.graph.edge(edgeId);
+    //   stroke(255);
+    //   strokeWeight(2);
+    //   line(p.point.getX(), p.point.getY(), q.point.getX(), q.point.getY());
+    // }
+
+    // for (const nodeId of autoRoute.graph.nodes()) {
+    //   const { graph } = autoRoute.graph.node(nodeId);
+    //   for (const edgeId of graph.edges()) {
+    //     const { path, weight } = graph.edge(edgeId);
+    //     drawGeom(path);
+    //   }
+    // }
+
+    if (stitches) {
+      const stitchLimit = Math.round(map(mouseX, 0, width, 0, stitches.length, true));
+      noFill();
+      let prev = stitches[0].position;
+      for (let i = 1; i < stitchLimit; i++) {
+        stroke(map(i, max(stitchLimit - 3, 1), stitchLimit, 255, 0));
+        const curr = stitches[i].position;
+        line(prev.x, prev.y, curr.x, curr.y);
+        prev = curr;
+      }
+    }
+
+    // for (const edge of autoRoute.componentGraph.edges()) {
+    //   const edgeLabel = autoRoute.componentGraph.edge(edge);
+    //   if (frameCount === 1) console.log(edgeLabel);
+    //   drawGeom(edgeLabel.path)
+    // }
+    // noStroke();
+    // for (const nodeId of autoRoute.componentGraph.nodes()) {
+    //   const { shape } = autoRoute.componentGraph.node(nodeId);
+    //   if (nodeId.startsWith('travel-')) fill(255, 0, 0, 50);
+    //   else fill(255, 50);
+    //   drawGeom(shape);
+    // }
+    //
+    // const stitchLimit = Math.round(map(mouseX, 0, width, 0, stitches.length, true));
+    // noFill();
+    // stroke(255);
+    // beginShape();
+    // for (let i = 0; i < stitchLimit; i++) {
+    //   vertex(stitches[i].position.x, stitches[i].position.y);
+    // }
+    // endShape();
+  }
+
+  function keyPressed() {
+    counter++;
+  }
+
+  function drawGeom(g) {
+    let geomType = g.getGeometryType();
+    if (geomType === 'MultiLineString') {
+      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+        drawGeom(g.getGeometryN(i));
+      }
+    } else if (geomType === 'LineString' || geomType === 'LinearRing') {
+      beginShape();
+      for (let i = 0, n = g.getNumPoints(); i < n; i++) {
+        const p = g.getPointN(i);
+        vertex(p.getX(), p.getY());
+      }
+      endShape();
+    } else if (geomType === 'Polygon') {
+      const shell = g.getExteriorRing();
+      beginShape();
+      for (let i = 0, n = shell.getNumPoints(); i < n; i++) {
+        const p = shell.getPointN(i);
+        vertex(p.getX(), p.getY());
+      }
+      for (let i = 0, n = g.getNumInteriorRing(); i < n; i++) {
+        const hole = g.getInteriorRingN(i);
+        beginContour();
+        for (let j = 0, m = hole.getNumPoints(); j < m; j++) {
+          const p = hole.getPointN(j);
+          vertex(p.getX(), p.getY());
+        }
+        endContour(CLOSE);
+      }
+      endShape(CLOSE);
+    } else if (geomType === 'GeometryCollection') {
+      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+        drawGeom(g.getGeometryN(i));
+      }
+    } else if (geomType === 'Point') {
+      const coord = g.getCoordinate();
+      circle(coord.x, coord.y, 5);
+    } else if (geomType === 'MultiPolygon') {
+      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+        drawGeom(g.getGeometryN(i));
+      }
+    }
+    else {
+      console.log(`Unrecognized Geometry Type: ${geomType}`);
+    }
+  }
 
   let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'AutoRouting', 10, 500);
   document.body.appendChild(modal.container);
-  window.addEventListener('click', (e) => {
-    if (e.target === modal.container) modal.close();
-  });
-  window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyD') modal.open();
-  });
+  window.addEventListener('click', (e) => { if (e.target === modal.container) modal.close(); });
+  window.addEventListener('keydown', (e) => { if (e.code === 'KeyD') modal.open(); });
 
 </script>
 </body>

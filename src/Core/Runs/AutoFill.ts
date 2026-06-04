@@ -388,9 +388,15 @@ export class AutoFill implements IRun {
         Math.sqrt(2) * this.travelStitchLengthMm * pixelsPerMm,
         '90',
       );
-      const segs1 = OverlayOp.intersection(this.polygon, rows1);
-      const segs2 = OverlayOp.intersection(this.polygon, rows2);
-      const segs3 = OverlayOp.intersection(this.polygon, rows3);
+      const segs1 = LineStringExtracter.getGeometry(
+        OverlayOp.intersection(this.polygon, rows1),
+      );
+      const segs2 = LineStringExtracter.getGeometry(
+        OverlayOp.intersection(this.polygon, rows2),
+      );
+      const segs3 = LineStringExtracter.getGeometry(
+        OverlayOp.intersection(this.polygon, rows3),
+      );
       endpoints = this.geometryFactory.createMultiPointFromCoords([
         ...segs1.getCoordinates(),
         ...segs2.getCoordinates(),

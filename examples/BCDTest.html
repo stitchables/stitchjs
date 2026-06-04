@@ -5,12 +5,9 @@
   <script src="../dist/stitch.global.js"></script>
   <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
   <script src="https://cdn.jsdelivr.net/npm/p5@2.2.2/lib/p5.js"></script>
-  <script src="https://unpkg.com/jsts@2.12.1/dist/jsts.min.js"></script>
 </head>
 <body>
 <script>
-
-  console.log(jsts);
 
   const shell = Stitch.Math.Polyline.fromArrays([
     [102, 356], [24, 251], [32, 179], [84, 250], [58, 145], [80, 108], [127, 46],
@@ -23,109 +20,57 @@
     [159, 257], [174, 256], [174, 274], [177, 302], [177, 336], [158, 358], [121, 366],
     [102, 356]
   ]).getRounded(10, 0.5).vertices;
+  // .getRounded(10, 0.5)
   const holes = [
     [[142, 324], [142, 296], [121, 297], [108, 315], [125, 338], [142, 324]],
     [[206, 139], [194, 150], [203, 166], [217, 146], [206, 139]],
     [[234, 309], [234, 326], [260, 326], [286, 295], [286, 264], [254, 279], [234, 309]]
   ].map(p => Stitch.Math.Polyline.fromArrays(p).getRounded(10, 0.5).vertices);
 
-  let skeleton, pathFinder;
-  let start = new Stitch.Math.Vector(150, 150);
-  let end = new Stitch.Math.Vector(300, 300);
-  let shapeRadius = 30;
-  let path = null;
+  // const shell = Stitch.Math.Polyline.fromArrays([
+  //   [50, 50], [350, 50], [350, 350], [50, 350], [50, 50]
+  // ]).vertices;
+  // const holes = [
+  //   [[100, 100], [200, 100], [200, 150], [100, 150], [100, 100]],
+  //   [[200, 300], [300, 300], [300, 250], [200, 250], [200, 300]]
+  // ].map(p => Stitch.Math.Polyline.fromArrays(p).vertices);
+
+  const polygon = Stitch.Geometry.createPolygon(shell, holes);
+  let bcd = Stitch.Geometry.getBCD(polygon, 0);
+  let index1 = 0;
+  let index2 = 0;
+
   async function setup() {
     createCanvas(400, 400);
     await Stitch.init();
-
-    const multiPolygonPathFinder = new Stitch.Optimize.MultiPolygonPathFinder([
-      Stitch.Geometry.createPolygon([
-        new Stitch.Math.Vector(0, 0),
-        new Stitch.Math.Vector(100, 0),
-        new Stitch.Math.Vector(0, 100),
-        new Stitch.Math.Vector(0, 0),
-      ]),
-      Stitch.Geometry.createPolygon([
-        new Stitch.Math.Vector(100, 100),
-        new Stitch.Math.Vector(200, 100),
-        new Stitch.Math.Vector(100, 200),
-        new Stitch.Math.Vector(100, 100),
-      ]),
-    ]);
-
-    const polygon = Stitch.Geometry.createPolygon(shell, holes);
-    skeleton = Stitch.Geometry.getStraightSkeleton(polygon);
-    pathFinder = new Stitch.Optimize.PolygonPathFinder(polygon);
-    path = pathFinder.findPath(createCirclePolygon(start.x, start.y, shapeRadius), createCirclePolygon(end.x, end.y, shapeRadius));
   }
 
   async function draw() {
     background(0);
 
+    stroke(255);
     strokeWeight(1);
-    for (const polygon of skeleton.polygons) {
-      for (let i = 1; i < polygon.length + 1; i++) {
-        const prev = skeleton.vertices[polygon[i - 1]];
-        const curr = skeleton.vertices[polygon[i % polygon.length]];
-        if (prev[2] === 0 && curr[2] === 0) stroke(255, 0, 0);
-        else if (prev[2] === 0 || curr[2] === 0) stroke(255, 255, 0);
-        else stroke(0, 255, 0);
-        line(prev[0], prev[1], curr[0], curr[1]);
-      }
-    }
-
-    stroke(0, 255, 255);
-    strokeWeight(3);
     noFill();
-    drawGeom(path);
+    drawGeom(polygon);
 
-    stroke(0);
-    strokeWeight(1);
-    fill(0, 255, 0);
-    circle(start.x, start.y, 7);
-    fill(0, 255, 0, 100);
-    drawGeom(createCirclePolygon(start.x, start.y, shapeRadius));
+    bcd = Stitch.Geometry.getBCD(polygon, map(mouseX, 0, width, 0, 2 * PI));
+    // for (const polygon of bcd.polygons) {
+    fill(255, 50);
+    drawGeom(bcd.polygons[index1 % bcd.polygons.length]);
+    const coordinates = bcd.polygons[index1 % bcd.polygons.length].getCoordinates();
+    for (const c of coordinates) circle(c.x, c.y, 5);
 
-    stroke(0);
-    strokeWeight(1);
-    fill(255, 0, 0);
-    circle(end.x, end.y, 7);
-    fill(255, 0, 0, 100);
-    drawGeom(createCirclePolygon(end.x, end.y, shapeRadius));
-
+    stroke(255, 0, 0);
+    strokeWeight(5);
+    const c1 = coordinates[index2 % (coordinates.length - 1)];
+    const c2 = coordinates[(index2 + 1) % (coordinates.length - 1)];
+    line(c1.x, c1.y, c2.x, c2.y);
+    // }
   }
 
-  let selection = null;
-  async function mousePressed() {
-    if (dist(mouseX, mouseY, start.x, start.y) < 15) selection = "start";
-    else if (dist(mouseX, mouseY, end.x, end.y) < 15) selection = "end";
-  }
-
-  async function mouseDragged() {
-    if (selection === "start") start = new Stitch.Math.Vector(mouseX, mouseY);
-    else if (selection === "end") end = new Stitch.Math.Vector(mouseX, mouseY);
-    const startCircle = createCirclePolygon(start.x, start.y, shapeRadius);
-    const endCircle = createCirclePolygon(end.x, end.y, shapeRadius);
-    path = pathFinder.findPath(startCircle, endCircle);
-  }
-
-  async function mouseReleased() {
-    selection = null;
-  }
-
-  function createCirclePolygon(cx, cy, r, s = 5) {
-    const shell = [];
-    const circumference = 2 * Math.PI * r;
-    const steps = Math.round(circumference / s);
-    for (let i = 0; i < steps; i++) {
-      const angle = Stitch.Math.Utils.map(i, 0, steps, 0, 2 * Math.PI);
-      shell.push(new Stitch.Math.Vector(
-        r * Math.cos(angle) + cx,
-        r * Math.sin(angle) + cy,
-      ));
-    }
-    shell.push(shell[0]);
-    return Stitch.Geometry.createPolygon(shell);
+  function keyPressed() {
+    if (keyCode === 37 || keyCode === 39) index1++;
+    if (keyCode === 38 || keyCode === 40) index2++;
   }
 
   function drawGeom(g) {

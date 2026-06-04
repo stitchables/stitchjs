@@ -1,0 +1,130 @@
+<!doctype html>
+<html>
+<head>
+  <title>SVG Redwork Example</title>
+  <script src="../../dist/stitch.global.js"></script>
+  <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
+  <script src="https://cdn.jsdelivr.net/npm/p5@2.2.2/lib/p5.js"></script>
+</head>
+<body>
+<script>
+
+  let redwork, stitches;
+  async function setup() {
+    // const svgStrings = await loadStrings('./GreatScott.svg');
+    // const viewbox = [0, 0, 745, 1053];
+    // const scale = 1;
+    const svgStrings = await loadStrings('./Maze.svg');
+    const viewbox = [-70.5, -12.1, 141, 90.2];
+    const scale = 6;
+    createCanvas(scale * viewbox[2], scale * viewbox[3]);
+    await Stitch.init();
+    let svgDoc = (new DOMParser()).parseFromString(svgStrings.join('\n'), 'image/svg+xml');
+    const lines = [];
+    for (let path of svgDoc.querySelectorAll('path')) {
+      const length = path.getTotalLength();
+      if (length > 5) {
+        const steps = length / 2;
+        const line = [];
+        for (let i = 0; i <= steps; i++) {
+          const p = path.getPointAtLength(map(i, 0, steps, 0, length));
+          const x = Stitch.Math.Utils.map(p.x, viewbox[0], viewbox[0] + viewbox[2], 0, scale * viewbox[2]);
+          const y = Stitch.Math.Utils.map(p.y, viewbox[1], viewbox[1] + viewbox[3], 0, scale * viewbox[3]);
+          line.push(new Stitch.Math.Vector(x, y));
+        }
+        lines.push(line);
+      }
+    }
+    redwork = new Stitch.Core.Runs.Redwork(lines);
+    stitches = redwork.getStitches(3);
+  }
+
+  async function draw() {
+    background(0);
+
+    noFill();
+    // stroke(255, 50);
+    // drawGeom(redwork.line);
+    // for (let edgeId of redwork.graph.edges()) {
+    //   const edge = redwork.graph.edge(edgeId);
+    //   drawGeom(edge);
+    // }
+
+    // stroke(255, 0, 0);
+    // for (let line of redwork.nodedGeoms) {
+    //   noFill();
+    //   drawGeom(line);
+    // }
+
+    // stroke(0, 255, 255);
+    // for (let line of redwork.jumps) {
+    //   noFill();
+    //   drawGeom(line);
+    // }
+
+    if (stitches) {
+      const stitchLimit = Math.round(map(mouseX, 0, width, 0, stitches.length, true));
+      noFill();
+      let prev = stitches[0].position;
+      for (let i = 1; i < stitchLimit; i++) {
+        stroke(map(i, max(stitchLimit - 50, 1), stitchLimit, 255, 0), 150);
+        const offset = map(i, 1, stitches.length, 0, 0);
+        const curr = stitches[i].position;
+        line(prev.x, prev.y + offset, curr.x, curr.y + offset);
+        prev = curr;
+      }
+    }
+
+
+  }
+
+  function drawGeom(g) {
+    let geomType = g.getGeometryType();
+    if (geomType === 'MultiLineString') {
+      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+        drawGeom(g.getGeometryN(i));
+      }
+    } else if (geomType === 'LineString' || geomType === 'LinearRing') {
+      beginShape();
+      for (let i = 0, n = g.getNumPoints(); i < n; i++) {
+        const p = g.getPointN(i);
+        vertex(p.getX(), p.getY());
+      }
+      endShape();
+    } else if (geomType === 'Polygon') {
+      const shell = g.getExteriorRing();
+      beginShape();
+      for (let i = 0, n = shell.getNumPoints(); i < n; i++) {
+        const p = shell.getPointN(i);
+        vertex(p.getX(), p.getY());
+      }
+      for (let i = 0, n = g.getNumInteriorRing(); i < n; i++) {
+        const hole = g.getInteriorRingN(i);
+        beginContour();
+        for (let j = 0, m = hole.getNumPoints(); j < m; j++) {
+          const p = hole.getPointN(j);
+          vertex(p.getX(), p.getY());
+        }
+        endContour(CLOSE);
+      }
+      endShape(CLOSE);
+    } else if (geomType === 'GeometryCollection') {
+      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+        drawGeom(g.getGeometryN(i));
+      }
+    } else if (geomType === 'Point') {
+      const coord = g.getCoordinate();
+      circle(coord.x, coord.y, 5);
+    } else if (geomType === 'MultiPolygon') {
+      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+        drawGeom(g.getGeometryN(i));
+      }
+    }
+    else {
+      console.log(`Unrecognized Geometry Type: ${geomType}`);
+    }
+  }
+
+</script>
+</body>
+</html>

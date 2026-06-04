@@ -1,0 +1,324 @@
+<!doctype html>
+<html>
+<head>
+  <title>Routed Satin Example</title>
+  <script src="../dist/stitch.global.js"></script>
+  <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
+  <script src="https://cdn.jsdelivr.net/npm/p5@2.2.2/lib/p5.js"></script>
+  <script src='https://cdn.jsdelivr.net/gh/anvaka/streamlines@v1.0.1/dist/streamlines.min.js'></script>
+</head>
+<body>
+<script>
+
+let stitchPlan;
+
+  const lines = [];
+  const routedSatins = [];
+  const shapes = [];
+  const v = (p) => { return { x: 2 * p.x, y: Math.sin((p.x + Math.hypot(p.x, p.y))) }; }
+  streamlines({
+    vectorField: v,
+    boundingBox: { left: -5, top: -5, width: 10, height: 10 },
+    // seed: { x: -2, y: -2 },
+    dSep: 1,
+    dTest: 0.25,
+    timeStep: 0.01,
+    onStreamlineAdded(points) {
+      lines.push(points);
+
+      const quadStrip = [];
+      for (let i = 0; i < points.length; i++) {
+        let n;
+        // if (i === 0)  {
+        //   n = Stitch.Math.Vector.fromObject(points[i + 1]).subtract(points[i]).normalized().multiply(0.1).rotate(Math.PI / 2);
+        // } else if (i === points.length - 1) {
+        //   n = Stitch.Math.Vector.fromObject(points[i]).subtract(points[i - 1]).normalized().multiply(0.1).rotate(Math.PI / 2);
+        // }
+        if (i === 0)  {
+          n = Stitch.Math.Vector.fromObject(points[i + 1]).subtract(points[i]).normalized().multiply(0.1).rotate(Math.PI / 2);
+        } else if (i === points.length - 1) {
+          n = Stitch.Math.Vector.fromObject(points[i]).subtract(points[i - 1]).normalized().multiply(0.1).rotate(Math.PI / 2);
+        } else {
+          const n1 = Stitch.Math.Vector.fromObject(points[i]).subtract(points[i - 1]).normalized().multiply(0.1).rotate(Math.PI / 2);
+          const n2 = Stitch.Math.Vector.fromObject(points[i + 1]).subtract(points[i]).normalized().multiply(0.1).rotate(Math.PI / 2);
+          n = n1.add(n2).normalized().multiply(0.1);
+        }
+        // const n = Stitch.Math.Vector.fromObject(p).normalized().multiply(0.1).rotate(Math.PI / 2);
+        quadStrip.push(new Stitch.Math.Vector(
+          Stitch.Math.Utils.map(points[i].x + n.x, -5, 5, 0, 800),
+          Stitch.Math.Utils.map(points[i].y + n.y, -5, 5, 0, 800),
+        ));
+        quadStrip.push(new Stitch.Math.Vector(
+          Stitch.Math.Utils.map(points[i].x - n.x, -5, 5, 0, 800),
+          Stitch.Math.Utils.map(points[i].y - n.y, -5, 5, 0, 800),
+        ));
+      }
+      const routedSatin = new Stitch.Core.RoutedRuns.RoutedSatin(quadStrip);
+      routedSatins.push(routedSatin);
+      shapes.push(routedSatin.getShape());
+    }
+  }).run().then(() => {
+    let pattern = new Stitch.Core.Pattern(800, 800);
+    let thread = pattern.addThread(200, 0, 0);
+    thread.addRun(new Stitch.Core.RoutedRuns.AutoRoute(routedSatins));
+    stitchPlan = pattern.getStitchPlan(800, 800, 10);
+  });
+
+
+
+  async function setup() {
+    createCanvas(800, 800);
+    await Stitch.init();
+  }
+
+  async function draw() {
+    background(0);
+
+    noFill();
+    stroke(255, 0, 0);
+    for (const l of lines) {
+      beginShape();
+      for (const p of l) {
+        vertex(map(p.x, -5, 5, 0, 800), map(p.y, -5, 5, 0, 800));
+      }
+      endShape();
+    }
+
+    stroke(255);
+    for (const s of shapes) {
+      drawGeom(s);
+    }
+
+    if (stitchPlan) {
+      const stitchLimit = Math.round(map(mouseX, 0, width, 0, stitchPlan.stitchCount, true));
+      let prev = stitchPlan.threads[0].runs[0][0].position;
+      for (let i = 1; i < stitchLimit; i++) {
+        stroke(map(i, max(stitchLimit - 3, 1), stitchLimit, 255, 0));
+        const curr = stitchPlan.threads[0].runs[0][i].position;
+        line(prev.x, prev.y, curr.x, curr.y);
+        prev = curr;
+      }
+    }
+  }
+
+  function drawGeom(g) {
+    let geomType = g.getGeometryType();
+    if (geomType === 'MultiLineString') {
+      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+        drawGeom(g.getGeometryN(i));
+      }
+    } else if (geomType === 'LineString' || geomType === 'LinearRing') {
+      beginShape();
+      for (let i = 0, n = g.getNumPoints(); i < n; i++) {
+        const p = g.getPointN(i);
+        vertex(p.getX(), p.getY());
+      }
+      endShape();
+    } else if (geomType === 'Polygon') {
+      const shell = g.getExteriorRing();
+      beginShape();
+      for (let i = 0, n = shell.getNumPoints(); i < n; i++) {
+        const p = shell.getPointN(i);
+        vertex(p.getX(), p.getY());
+      }
+      for (let i = 0, n = g.getNumInteriorRing(); i < n; i++) {
+        const hole = g.getInteriorRingN(i);
+        beginContour();
+        for (let j = 0, m = hole.getNumPoints(); j < m; j++) {
+          const p = hole.getPointN(j);
+          vertex(p.getX(), p.getY());
+        }
+        endContour(CLOSE);
+      }
+      endShape(CLOSE);
+    } else if (geomType === 'GeometryCollection') {
+      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+        drawGeom(g.getGeometryN(i));
+      }
+    } else if (geomType === 'Point') {
+      const coord = g.getCoordinate();
+      circle(coord.x, coord.y, 5);
+    } else if (geomType === 'MultiPolygon') {
+      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+        drawGeom(g.getGeometryN(i));
+      }
+    }
+    else {
+      console.log(`Unrecognized Geometry Type: ${geomType}`);
+    }
+  }
+
+
+  // async function setup() {
+  //   createCanvas(800, 800);
+  //   await Stitch.init();
+  //   // autoRoute = autoRuns[0].getUnderlayAutoRoute(5, autoRouteOptions);
+  //   try {
+  //
+  //     const topRuns = [];
+  //     for (let p of autoRouteOptions.travelPolygons) {
+  //       const polygon = { shell: [] };
+  //       for (let i = 0; i < p.shell.length; i++) {
+  //         polygon.shell.push(new Stitch.Math.Vector(p.shell[i].x, p.shell[i].y));
+  //       }
+  //       topRuns.push(new Stitch.Core.RoutedRuns.RoutedFill(polygon, { angle: Math.PI * rng.random_dec() }));
+  //     }
+  //     const topThread = pattern.addThread(0, 0, 0);
+  //     if (topRuns.length > 0) {
+  //       const topAutoRoute = new Stitch.Core.RoutedRuns.AutoRoute(topRuns, {
+  //         entry: new Stitch.Math.Vector(0, 0),
+  //         exit: new Stitch.Math.Vector(800, 800)
+  //       });
+  //       topThread.addRun(topAutoRoute);
+  //     }
+  //
+  //     autoRoute = new Stitch.Core.RoutedRuns.AutoRoute(autoRuns, autoRouteOptions);
+  //     thread.addRun(autoRoute);
+  //     stitches = autoRoute.getStitches(5);
+  //   } catch (e) {
+  //     console.error(e);
+  //   }
+  // }
+  //
+  // async function draw() {
+  //   background(0);
+  //
+  //   fill(255, 0, 0);
+  //   noStroke();
+  //   for (let polygon of autoRouteOptions.travelPolygons) {
+  //     drawGeom(Stitch.Geometry.createPolygon(polygon.shell, polygon.holes));
+  //   }
+  //
+  //   // run boundaries
+  //   fill(0, 255, 0);
+  //   noStroke();
+  //   for (let autoRun of autoRuns) {
+  //     drawGeom(autoRun.polygon);
+  //   }
+  //
+  //   // for (const nodeId of autoRoute.graph.nodes()) {
+  //   //   const { runs, travels, freeSpace } = autoRoute.graph.node(nodeId);
+  //   //   // travel boundaries
+  //   //   fill(255, 0, 0);
+  //   //   noStroke();
+  //   //   for (const travel of travels) drawGeom(travel);
+  //   //   // run boundaries
+  //   //   fill(0, 255, 0);
+  //   //   noStroke();
+  //   //   for (const { boundary } of runs) drawGeom(boundary);
+  //   //   // component boundary
+  //   //   noFill();
+  //   //   stroke(255);
+  //   //   strokeWeight(2);
+  //   //   drawGeom(freeSpace);
+  //   // }
+  //
+  //   // for (const edgeId of autoRoute.graph.edges()) {
+  //   //   const { p, q, weight } = autoRoute.graph.edge(edgeId);
+  //   //   stroke(255);
+  //   //   strokeWeight(2);
+  //   //   line(p.point.getX(), p.point.getY(), q.point.getX(), q.point.getY());
+  //   // }
+  //
+  //   // for (const nodeId of autoRoute.graph.nodes()) {
+  //   //   const { graph } = autoRoute.graph.node(nodeId);
+  //   //   for (const edgeId of graph.edges()) {
+  //   //     const { path, weight } = graph.edge(edgeId);
+  //   //     drawGeom(path);
+  //   //   }
+  //   // }
+  //
+  //   if (stitches) {
+  //     const stitchLimit = Math.round(map(mouseX, 0, width, 0, stitches.length, true));
+  //     noFill();
+  //     let prev = stitches[0].position;
+  //     for (let i = 1; i < stitchLimit; i++) {
+  //       stroke(map(i, max(stitchLimit - 3, 1), stitchLimit, 255, 0));
+  //       const curr = stitches[i].position;
+  //       line(prev.x, prev.y, curr.x, curr.y);
+  //       prev = curr;
+  //     }
+  //   }
+  //
+  //   // for (const edge of autoRoute.componentGraph.edges()) {
+  //   //   const edgeLabel = autoRoute.componentGraph.edge(edge);
+  //   //   if (frameCount === 1) console.log(edgeLabel);
+  //   //   drawGeom(edgeLabel.path)
+  //   // }
+  //   // noStroke();
+  //   // for (const nodeId of autoRoute.componentGraph.nodes()) {
+  //   //   const { shape } = autoRoute.componentGraph.node(nodeId);
+  //   //   if (nodeId.startsWith('travel-')) fill(255, 0, 0, 50);
+  //   //   else fill(255, 50);
+  //   //   drawGeom(shape);
+  //   // }
+  //   //
+  //   // const stitchLimit = Math.round(map(mouseX, 0, width, 0, stitches.length, true));
+  //   // noFill();
+  //   // stroke(255);
+  //   // beginShape();
+  //   // for (let i = 0; i < stitchLimit; i++) {
+  //   //   vertex(stitches[i].position.x, stitches[i].position.y);
+  //   // }
+  //   // endShape();
+  // }
+  //
+  // function keyPressed() {
+  //   counter++;
+  // }
+  //
+  // function drawGeom(g) {
+  //   let geomType = g.getGeometryType();
+  //   if (geomType === 'MultiLineString') {
+  //     for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+  //       drawGeom(g.getGeometryN(i));
+  //     }
+  //   } else if (geomType === 'LineString' || geomType === 'LinearRing') {
+  //     beginShape();
+  //     for (let i = 0, n = g.getNumPoints(); i < n; i++) {
+  //       const p = g.getPointN(i);
+  //       vertex(p.getX(), p.getY());
+  //     }
+  //     endShape();
+  //   } else if (geomType === 'Polygon') {
+  //     const shell = g.getExteriorRing();
+  //     beginShape();
+  //     for (let i = 0, n = shell.getNumPoints(); i < n; i++) {
+  //       const p = shell.getPointN(i);
+  //       vertex(p.getX(), p.getY());
+  //     }
+  //     for (let i = 0, n = g.getNumInteriorRing(); i < n; i++) {
+  //       const hole = g.getInteriorRingN(i);
+  //       beginContour();
+  //       for (let j = 0, m = hole.getNumPoints(); j < m; j++) {
+  //         const p = hole.getPointN(j);
+  //         vertex(p.getX(), p.getY());
+  //       }
+  //       endContour(CLOSE);
+  //     }
+  //     endShape(CLOSE);
+  //   } else if (geomType === 'GeometryCollection') {
+  //     for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+  //       drawGeom(g.getGeometryN(i));
+  //     }
+  //   } else if (geomType === 'Point') {
+  //     const coord = g.getCoordinate();
+  //     circle(coord.x, coord.y, 5);
+  //   } else if (geomType === 'MultiPolygon') {
+  //     for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+  //       drawGeom(g.getGeometryN(i));
+  //     }
+  //   }
+  //   else {
+  //     console.log(`Unrecognized Geometry Type: ${geomType}`);
+  //   }
+  // }
+  //
+  // let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'AutoRouting', 10, 500);
+  // document.body.appendChild(modal.container);
+  // window.addEventListener('click', (e) => { if (e.target === modal.container) modal.close(); });
+  // window.addEventListener('keydown', (e) => { if (e.code === 'KeyD') modal.open(); });
+
+</script>
+</body>
+</html>
