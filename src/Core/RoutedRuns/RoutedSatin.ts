@@ -4,6 +4,7 @@ import { Stitch } from '../Stitch';
 import { Coordinate, Polygon } from 'jsts/org/locationtech/jts/geom';
 import CascadedPolygonUnion from 'jsts/org/locationtech/jts/operation/union/CascadedPolygonUnion';
 import ArrayList from 'jsts/java/util/ArrayList';
+import Polygonizer from 'jsts/org/locationtech/jts/operation/polygonize/Polygonizer';
 import { geometryFactory } from '../../util/jsts';
 import { ClassicSatin } from '../Runs/ClassicSatin';
 
@@ -26,6 +27,7 @@ export class RoutedSatin implements IRoutedRun {
     type: string;
     options?: UnderlayOptions;
   }[];
+  shape: Polygon | undefined;
   constructor(
     quadStripVertices: Vector[],
     options?: {
@@ -46,32 +48,33 @@ export class RoutedSatin implements IRoutedRun {
   }
 
   getShape(): Polygon {
+    if (this.shape !== undefined) return this.shape;
     const toCoord = (v: Vector) => new Coordinate(v.x, v.y);
-    // const ringCoords = [];
-    // for (let i = 0; i < this.quadStripVertices.length; i += 2) {
-    //   ringCoords.push(toCoord(this.quadStripVertices[i]));
-    //   ringCoords.unshift(toCoord(this.quadStripVertices[i + 1]));
-    // }
-    // ringCoords.push(toCoord(this.quadStripVertices[this.quadStripVertices.length - 1]));
-    // const polygonizer = new Polygonizer(true);
-    // polygonizer.add(geometryFactory.createLinearRing(ringCoords));
-    // console.log(polygonizer.getPolygons());
-    // // if (polygonizer.getPolygons().toArray().length === 0) return geometryFactory.createLinearRing(ringCoords);
-    // return polygonizer.getGeometry();
-    const polygonCollection = new ArrayList(0);
-    for (let i = 1; i < this.quadStripVertices.length / 2; i++) {
-      polygonCollection.add(
-        geometryFactory.createPolygon([
-          toCoord(this.quadStripVertices[2 * i]),
-          toCoord(this.quadStripVertices[2 * i + 1]),
-          toCoord(this.quadStripVertices[2 * i - 1]),
-          toCoord(this.quadStripVertices[2 * i - 2]),
-          toCoord(this.quadStripVertices[2 * i]),
-        ]),
-      );
+    const ringCoords = [];
+    for (let i = 0; i < this.quadStripVertices.length; i += 2) {
+      ringCoords.push(toCoord(this.quadStripVertices[i]));
+      ringCoords.unshift(toCoord(this.quadStripVertices[i + 1]));
     }
-    console.log(CascadedPolygonUnion.union(polygonCollection));
-    return CascadedPolygonUnion.union(polygonCollection);
+    ringCoords.push(toCoord(this.quadStripVertices[this.quadStripVertices.length - 1]));
+    const polygonizer = new Polygonizer(true);
+    polygonizer.add(geometryFactory.createLinearRing(ringCoords));
+    const polygon = polygonizer.getGeometry();
+    this.shape = polygon;
+    return polygon;
+
+    // const polygonCollection = new ArrayList(0);
+    // for (let i = 1; i < this.quadStripVertices.length / 2; i++) {
+    //   polygonCollection.add(
+    //     geometryFactory.createPolygon([
+    //       toCoord(this.quadStripVertices[2 * i]),
+    //       toCoord(this.quadStripVertices[2 * i + 1]),
+    //       toCoord(this.quadStripVertices[2 * i - 1]),
+    //       toCoord(this.quadStripVertices[2 * i - 2]),
+    //       toCoord(this.quadStripVertices[2 * i]),
+    //     ]),
+    //   );
+    // }
+    // return CascadedPolygonUnion.union(polygonCollection);
   }
 
   getUnderlayRuns(pixelsPerMm: number): IRoutedRun[] {

@@ -1,33 +1,12 @@
-import { LinearRing, Polygon } from 'jsts/org/locationtech/jts/geom';
-import Orientation from 'jsts/org/locationtech/jts/algorithm/Orientation';
-import { SkeletonBuilder } from 'straight-skeleton';
+import { Polygon } from 'jsts/org/locationtech/jts/geom';
+import GeoJSONWriter from 'jsts/org/locationtech/jts/io/GeoJSONWriter';
+import * as str8 from '@matthewjacobson/str8';
 import { isInitialized } from '../index';
 
-function polygonToNumberArray(polygon: Polygon): number[][][] {
-  const ringToArray = (ring: LinearRing, orientation: string): number[][] => {
-    const coords = ring.getCoordinates();
-    const isCCW = Orientation.isCCW(coords);
-    if ((orientation === 'CCW' && !isCCW) || (orientation === 'CW' && isCCW)) {
-      coords.reverse();
-    }
-    const out: number[][] = new Array(coords.length);
-    for (let i = 0; i < coords.length; i++) {
-      out[i] = [coords[i].x, coords[i].y];
-    }
-    return out;
-  };
-  const result: number[][][] = [];
-  result.push(ringToArray(polygon.getExteriorRing(), 'CCW'));
-  for (let i = 0; i < polygon.getNumInteriorRing(); i++) {
-    result.push(ringToArray(polygon.getInteriorRingN(i), 'CW'));
+const writer = new GeoJSONWriter();
+export function getStraightSkeleton(polygon: Polygon): (str8.Skeleton | null)[] {
+  if (!isInitialized || !str8.isReady()) {
+    throw new Error("str8 package is not ready... call 'await Stitch.init()' first.");
   }
-  return result;
-}
-
-export function getStraightSkeleton(polygon: Polygon) {
-  if (!isInitialized)
-    throw new Error(
-      "StraightSkeleton has not been initialized. Call 'await Stitch.init()' first.",
-    );
-  return SkeletonBuilder.buildFromPolygon(polygonToNumberArray(polygon));
+  return str8.buildFromGeoJSON(writer.write(polygon));
 }

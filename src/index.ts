@@ -6,13 +6,13 @@ import { Graphics } from './Graphics';
 import { IO } from './IO';
 import { Math } from './Math';
 import { Optimize } from './Optimize';
-import { SkeletonBuilder } from 'straight-skeleton';
+import * as str8 from '@matthewjacobson/str8';
 
 // initialize wasm stuff here
 export var isInitialized = false;
 export async function init() {
   if (!isInitialized) {
-    await SkeletonBuilder.init();
+    await str8.init();
     isInitialized = true;
   }
 }

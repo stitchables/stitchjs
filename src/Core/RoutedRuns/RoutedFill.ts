@@ -131,6 +131,7 @@ export class RoutedFill implements IRoutedRun {
       const buffer = this.polygon.buffer(-underlayOptions.insetMm * pixelsPerMm);
       const insetPolygons = PolygonExtracter.getPolygons(buffer).toArray();
       for (const insetPolygon of insetPolygons) {
+        if (insetPolygon.isEmpty()) continue;
         const shell = insetPolygon
           .getExteriorRing()
           .getCoordinates()

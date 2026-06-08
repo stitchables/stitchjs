@@ -81,7 +81,8 @@
   async function setup() {
     createCanvas(800, 800);
     await Stitch.init();
-    pathFinder = Stitch.Optimize.MATPolygonPathFinder.fromPolygon(polygon, 10);
+    // pathFinder = Stitch.Optimize.MATPolygonPathFinder.fromPolygon(polygon, 10);
+    pathFinder = new Stitch.Optimize.PolygonPathFinder(polygon);
     startGeom = createCircle(start.x, start.y, 15);
     endGeom = createCircle(end.x, end.y, 15);
     path = pathFinder.findPath(
@@ -135,18 +136,18 @@
 
     stroke(0, 255, 0);
     noFill();
-    drawGeom(pathFinder.polygon);
+    drawGeom(polygon);
 
-    stroke(255, 50);
-    noFill();
-    drawGeom(pathFinder.polygons);
+    // stroke(255, 50);
+    // noFill();
+    // drawGeom(pathFinder.polygons);
 
-    stroke(255, 0, 0);
-    for (const { v, w } of pathFinder.spineGraph.edges()) {
-      const p = pathFinder.spineGraph.node(v);
-      const q = pathFinder.spineGraph.node(w);
-      line(p.x, p.y, q.x, q.y);
-    }
+    // stroke(255, 0, 0);
+    // for (const { v, w } of pathFinder.spineGraph.edges()) {
+    //   const p = pathFinder.spineGraph.node(v);
+    //   const q = pathFinder.spineGraph.node(w);
+    //   line(p.x, p.y, q.x, q.y);
+    // }
 
     if (path) {
       stroke(0, 255, 255);

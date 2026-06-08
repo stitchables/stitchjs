@@ -18,10 +18,10 @@ import PointExtracter from 'jsts/org/locationtech/jts/geom/util/PointExtracter';
 import * as graphlib from '@dagrejs/graphlib';
 import { geometryFactory } from '../util/jsts';
 import { findPath } from './findPath';
-import { Skeleton } from 'straight-skeleton';
 import { IPolygonPathFinder, PathFinderGeometry } from './PolygonPathFinder';
 import { getStraightSkeleton } from '../Geometry/getStraightSkeleton';
 import NavMeshPolygonPathFinder from './NavMeshPolygonPathFinder';
+import { Skeleton } from '@matthewjacobson/str8';
 
 class SkeletonTreeItemDistance {
   distance(item1: ItemBoundable, item2: ItemBoundable) {
@@ -48,10 +48,10 @@ export class SkeletonPolygonPathFinder implements IPolygonPathFinder {
     this.skeletonTreeItemDistance = new SkeletonTreeItemDistance();
     const centerLineMerger = new LineMerger();
     if (!skeleton) throw new Error('Failed to create straight skeleton...');
-    for (const polygon of skeleton.polygons) {
+    for (const polygon of skeleton.faces) {
       let prevIndex = polygon[0];
       let prevNode = prevIndex.toString();
-      let prevVertex = skeleton.vertices[prevIndex];
+      let prevVertex = skeleton.vertices.subarray(3 * prevIndex, 3 * prevIndex + 3);
       let prevCoordinate = new Coordinate(prevVertex[0], prevVertex[1]);
       let prevPoint = geometryFactory.createPoint(prevCoordinate);
       const polygonCoordinates = [prevCoordinate];
@@ -59,7 +59,7 @@ export class SkeletonPolygonPathFinder implements IPolygonPathFinder {
       for (let i = 1; i <= polygon.length; i++) {
         const currIndex = polygon[i % polygon.length];
         const currNode = currIndex.toString();
-        const currVertex = skeleton.vertices[currIndex];
+        const currVertex = skeleton.vertices.subarray(3 * currIndex, 3 * currIndex + 3);
         const currCoordinate = new Coordinate(currVertex[0], currVertex[1]);
         const currPoint = geometryFactory.createPoint(currCoordinate);
         polygonCoordinates.push(currCoordinate);
@@ -102,9 +102,10 @@ export class SkeletonPolygonPathFinder implements IPolygonPathFinder {
   static fromPolygon(polygon: Polygon): SkeletonPolygonPathFinder | undefined {
     try {
       let skeleton = getStraightSkeleton(polygon);
-      if (skeleton) return new SkeletonPolygonPathFinder(polygon, skeleton);
+      if (skeleton[0]) return new SkeletonPolygonPathFinder(polygon, skeleton[0]);
       return undefined;
     } catch (e) {
+      console.warn(`Error in Straight Skeleton creation: ${e}`);
       return undefined;
     }
   }

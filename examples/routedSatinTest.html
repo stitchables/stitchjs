@@ -10,65 +10,297 @@
 <body>
 <script>
 
-let stitchPlan;
-
-  const lines = [];
-  const routedSatins = [];
-  const shapes = [];
-  const v = (p) => { return { x: 2 * p.x, y: Math.sin((p.x + Math.hypot(p.x, p.y))) }; }
-  streamlines({
-    vectorField: v,
-    boundingBox: { left: -5, top: -5, width: 10, height: 10 },
-    // seed: { x: -2, y: -2 },
-    dSep: 1,
-    dTest: 0.25,
-    timeStep: 0.01,
-    onStreamlineAdded(points) {
-      lines.push(points);
-
-      const quadStrip = [];
-      for (let i = 0; i < points.length; i++) {
-        let n;
-        // if (i === 0)  {
-        //   n = Stitch.Math.Vector.fromObject(points[i + 1]).subtract(points[i]).normalized().multiply(0.1).rotate(Math.PI / 2);
-        // } else if (i === points.length - 1) {
-        //   n = Stitch.Math.Vector.fromObject(points[i]).subtract(points[i - 1]).normalized().multiply(0.1).rotate(Math.PI / 2);
-        // }
-        if (i === 0)  {
-          n = Stitch.Math.Vector.fromObject(points[i + 1]).subtract(points[i]).normalized().multiply(0.1).rotate(Math.PI / 2);
-        } else if (i === points.length - 1) {
-          n = Stitch.Math.Vector.fromObject(points[i]).subtract(points[i - 1]).normalized().multiply(0.1).rotate(Math.PI / 2);
-        } else {
-          const n1 = Stitch.Math.Vector.fromObject(points[i]).subtract(points[i - 1]).normalized().multiply(0.1).rotate(Math.PI / 2);
-          const n2 = Stitch.Math.Vector.fromObject(points[i + 1]).subtract(points[i]).normalized().multiply(0.1).rotate(Math.PI / 2);
-          n = n1.add(n2).normalized().multiply(0.1);
-        }
-        // const n = Stitch.Math.Vector.fromObject(p).normalized().multiply(0.1).rotate(Math.PI / 2);
-        quadStrip.push(new Stitch.Math.Vector(
-          Stitch.Math.Utils.map(points[i].x + n.x, -5, 5, 0, 800),
-          Stitch.Math.Utils.map(points[i].y + n.y, -5, 5, 0, 800),
-        ));
-        quadStrip.push(new Stitch.Math.Vector(
-          Stitch.Math.Utils.map(points[i].x - n.x, -5, 5, 0, 800),
-          Stitch.Math.Utils.map(points[i].y - n.y, -5, 5, 0, 800),
-        ));
-      }
-      const routedSatin = new Stitch.Core.RoutedRuns.RoutedSatin(quadStrip);
-      routedSatins.push(routedSatin);
-      shapes.push(routedSatin.getShape());
+  class QT {
+    constructor(bb, cap) {
+      this.bb = bb;
+      this.cap = cap;
+      this.ps = [];
+      this.cs = [];
+      this.div = false;
     }
-  }).run().then(() => {
-    let pattern = new Stitch.Core.Pattern(800, 800);
-    let thread = pattern.addThread(200, 0, 0);
-    thread.addRun(new Stitch.Core.RoutedRuns.AutoRoute(routedSatins));
-    stitchPlan = pattern.getStitchPlan(800, 800, 10);
-  });
+    sub() {
+      for (let i of [-1, 1]) for (let j of [-1, 1]) {
+        this.cs.push(new QT(new BB([this.bb.p[0] + i * 0.5 * this.bb.d[0], this.bb.p[1] + j * 0.5 * this.bb.d[1]], [0.5 * this.bb.d[0], 0.5 * this.bb.d[1]]), this.cap));
+      }
+      for (let p of this.ps) for (let c of this.cs) if (c.bb.cont(p)) c.ins(p);
+      this.ps = [];
+      this.div = true;
+    }
+    ins(p) {
+      if (!this.bb.cont(p.p)) return false;
+      if (this.ps.length < this.cap && !this.div) {
+        this.ps.push(p);
+        return true;
+      } else {
+        if (!this.div) this.sub();
+        for (let c of this.cs) if (c.ins(p)) return true;
+      }
+    }
+    q(rng, f) {
+      if (!f) f = [];
+      if (!this.bb.inter(rng)) return;
+      else {
+        for (let p of this.ps) if (rng.cont(p)) f.push(p);
+        if (this.div) for (let c of this.cs) c.q(rng, f);
+      }
+      return f;
+    }
+  }
+
+  class BB {
+    constructor(p, d) {
+      this.p = p;
+      this.d = d;
+    }
+    cont(p) {
+      for (let i of [0, 1]) if (p[i] < this.p[i] - this.d[i] || p[i] >= this.p[i] + this.d[i]) return false;
+      return true;
+    }
+    inter(bb) {
+      for (let i of [0, 1]) if (bb.p[i] - bb.d[i] > this.p[i] + this.d[i] || bb.p[i] + bb.d[i] < this.p[i] - this.d[i]) return false;
+      return true;
+    }
+  }
+
+  class ESS {
+    constructor(d, vf, sf, dsf) {
+      this.d = d;
+      this.vf = vf;
+      this.sf = sf;
+      this.dsf = dsf;
+      this.qt = new QT(new BB([0.5 * d[0], 0.5 * d[1]], [0.5 * d[0], 0.5 * d[1]]), 4);
+      this.sl = [];
+    }
+    rst() {
+      this.qt = new QT(new BB([0.5 * this.d[0], 0.5 * this.d[1]], [0.5 * this.d[0], 0.5 * this.d[1]]), 4);
+      this.sl = [];
+    }
+    csl(s) {
+      if (this.cp(s) || this.sl.length === 0) {
+        let tl = this.cssl(s);
+        this.sl.push(tl);
+        for (let p of tl) this.qt.ins({p: p, i: this.sl.length - 1});
+        for (let p of tl) {
+          let o = this.vf(p);
+          o = this.nrm(o);
+          o = this.rot(o);
+          o = this.mult(o, this.sf(p));
+          this.csl([p[0] + o[0], p[1] + o[1]]);
+          this.csl([p[0] - o[0], p[1] - o[1]]);
+        }
+      }
+      return this.sl;
+    }
+    cssl(s) {
+      let tqt = new QT(new BB([0.5 * this.d[0], 0.5 * this.d[1]], [0.5 * this.d[0], 0.5 * this.d[1]]), 4);
+      let l = 0;
+      tqt.ins({p: s, l: l});
+      let tl = [s];
+      let fl = false;
+      while(true) {
+        let lp = tl[tl.length - 1];
+        let d = this.vf(lp);
+        if (fl) d = this.mult(d, -1);
+        let np = [lp[0] + d[0], lp[1] + d[1]];
+        // let di = dist(0, 0, d[0], d[1]);
+        let di = Math.sqrt(d[0] * d[0] + d[1] * d[1]);
+        if (!this.cp(np, tqt, di, l, lp)) {
+          if (!fl) {
+            tl.reverse();
+            l = 0;
+            fl = true;
+          } else return tl;
+        } else {
+          tl.push(np);
+          l += fl ? -di : di;
+          tqt.ins({p: np, l: l});
+        }
+      }
+    }
+    // check point
+    cp(p, tqt, di, l, pp) {
+      if (!this.cb(p)) return false;
+      if (di) if (!this.csn(di)) return false;
+      if (!this.csp(p, pp)) return false;
+      if (pp) if (!this.csi(tqt, l, p)) return false;
+      return true;
+    }
+    // check boundary
+    cb(p) {
+      for (let i of [0, 1]) if (p[i] < 0 || p[i] > this.d[i]) return false;
+      return true;
+    }
+    // check sink
+    csn(di) { return di > 0.001; }
+    // check separation
+    csp(p, pp) {
+      let s = this.sf(p);
+      let ds = 1;
+      if (pp) ds = this.dsf(p);
+      let ns = this.qt.q(new BB(p, [s, s]));
+      // for (let n of ns) if (dist(p[0], p[1], n.p[0], n.p[1]) < ds * s) return false;
+      for (let n of ns) if (Math.sqrt((n.p[0] - p[0]) * (n.p[0] - p[0]) + (n.p[1] - p[1]) * (n.p[1] - p[1])) < ds * s) return false;
+      return true;
+    }
+    csi(tqt, l, p) {
+      let s = this.sf(p);
+      let ns = tqt.q(new BB(p, [s, s]));
+      for (let n of ns) {
+        // let cd = dist(p[0], p[1], n.p[0], n.p[1]);
+        let cd = Math.sqrt((n.p[0] - p[0]) * (n.p[0] - p[0]) + (n.p[1] - p[1]) * (n.p[1] - p[1]));
+        if (cd < s && Math.abs(l - n.l) > s) return false;
+      }
+      return true;
+    }
+    nrm(v) {
+      // let l = dist(0, 0, v[0], v[1]);
+      let l = Math.sqrt(v[0] * v[0] + v[1] * v[1]);
+      return [v[0] / l, v[1] / l];
+    }
+    rot(v) { return [v[1], -v[0]]; }
+    mult(v, m) { return [m * v[0], m * v[1]]; }
+    getSl() {
+      let output = [];
+      for (let sli = 0; sli < this.sl.length; sli++) {
+        let sl = this.sl[sli];
+        let sld = [];
+        for (let p of sl) {
+          let sf = this.sf(p);
+          let dsf = this.dsf(p);
+          let ns = this.qt.q(new BB(p, [sf, sf]));
+          // let minDist = min(min(p[0], this.d[0] - p[0]), min(p[1], this.d[1] - p[1]));
+          let minDist = Infinity;
+          for (let n of ns) {
+            if (sli != n.i) {
+              // let currDist = dist(p[0], p[1], n.p[0], n.p[1]);
+              let currDist = Math.sqrt((n.p[0] - p[0]) * (n.p[0] - p[0]) + (n.p[1] - p[1]) * (n.p[1] - p[1]))
+              if (currDist < minDist) minDist = currDist;
+            }
+          }
+          let tCoeff = minDist >= sf ? 1 : (minDist - sf * dsf) / (sf - sf * dsf);
+          sld.push({x: p[0], y: p[1], t: tCoeff});
+        }
+        output.push(sld);
+      }
+      return output;
+    }
+  }
+
+
+
+  let stitchPlan;
+  const lines = [];
+  const shapes = [];
+
+  function prepStitchPlan() {
+    const routedSatins = [];
+    let vf = function(p) {
+      const q = new Stitch.Math.Vector(2 * (p[0] + 5), Math.sin((p[0] + 5 + Math.hypot(p[0] + 5, p[1] + 5))));
+      const out = q.normalized().multiply(0.1).rotate(map(noise(p[0] / 7, p[1] / 7), 0, 1, 0, 2 * Math.PI));
+      return [out.x, out.y];
+    };
+    let sf = function(p) { return 0.8; }
+    let dsf = function(p) { return 0.5; }
+    let ess = new ESS([10, 10], vf, sf, dsf);
+    for (let x = 0; x <= 10; x += 1) {
+      for (let y = 0; y <= 10; y += 1) {
+        ess.csl([x, y]);
+      }
+    }
+    let sld = ess.getSl();
+
+
+    for (let sl of sld) {
+      if (sl.length > 3) {
+        const satinVertices = [];
+        for (let i = 1; i < sl.length - 1; i++) {
+          const ppMm = 20;
+          let prev = new Stitch.Math.Vector(80 * sl[i - 1].x, 80 * sl[i - 1].y);
+          let curr = new Stitch.Math.Vector(80 * sl[i - 0].x, 80 * sl[i - 0].y);
+          let next = new Stitch.Math.Vector(80 * sl[i + 1].x, 80 * sl[i + 1].y);
+          let n = curr.subtract(prev).add(next.subtract(curr)).divide(2)
+            .rotate(0.5 * Math.PI).normalized();
+          satinVertices.push(curr.add(n.multiply(0.5 * ppMm * sl[i].t * sl[i].t + 0.5 * ppMm)));
+          satinVertices.push(curr.subtract(n.multiply(0.5 * ppMm * sl[i].t * sl[i].t + 0.5 * ppMm)));
+        }
+        let startPosition = satinVertices[Math.round(0.25 * satinVertices.length)];
+        let endPosition = satinVertices[Math.round(0.75 * satinVertices.length)];
+        if (Math.random() < 0.5) {
+          [startPosition, endPosition] = [endPosition, startPosition];
+        }
+
+        const routedSatin = new Stitch.Core.RoutedRuns.RoutedSatin(satinVertices);
+        routedSatins.push(routedSatin);
+        shapes.push(routedSatin.getShape());
+
+        let pattern = new Stitch.Core.Pattern(800, 800);
+        let thread = pattern.addThread(200, 0, 0);
+        thread.addRun(new Stitch.Core.RoutedRuns.AutoRoute(routedSatins));
+        stitchPlan = pattern.getStitchPlan(800, 800, 10);
+        // const classicSatin = new Stitch.Core.Runs.ClassicSatin(satinVertices, 0.8, 3, startPosition, endPosition);
+        // thread.addRun(classicSatin);
+        // satinBlocks.push(classicSatin);
+      }
+    }
+
+    // const v = (p) => {
+    //   return { x: 2 * p.x, y: Math.sin((p.x + Math.hypot(p.x, p.y))) };
+    // }
+    // streamlines({
+    //   vectorField: v,
+    //   boundingBox: { left: -5, top: -5, width: 10, height: 10 },
+    //   // seed: { x: -2, y: -2 },
+    //   dSep: 1,
+    //   dTest: 0.25,
+    //   timeStep: 0.01,
+    //   onStreamlineAdded(points) {
+    //     lines.push(points);
+    //
+    //     const quadStrip = [];
+    //     for (let i = 0; i < points.length; i++) {
+    //       let n;
+    //       // if (i === 0)  {
+    //       //   n = Stitch.Math.Vector.fromObject(points[i + 1]).subtract(points[i]).normalized().multiply(0.1).rotate(Math.PI / 2);
+    //       // } else if (i === points.length - 1) {
+    //       //   n = Stitch.Math.Vector.fromObject(points[i]).subtract(points[i - 1]).normalized().multiply(0.1).rotate(Math.PI / 2);
+    //       // }
+    //       if (i === 0) {
+    //         n = Stitch.Math.Vector.fromObject(points[i + 1]).subtract(points[i]).normalized().multiply(0.1).rotate(Math.PI / 2);
+    //       } else if (i === points.length - 1) {
+    //         n = Stitch.Math.Vector.fromObject(points[i]).subtract(points[i - 1]).normalized().multiply(0.1).rotate(Math.PI / 2);
+    //       } else {
+    //         const n1 = Stitch.Math.Vector.fromObject(points[i]).subtract(points[i - 1]).normalized().multiply(0.1).rotate(Math.PI / 2);
+    //         const n2 = Stitch.Math.Vector.fromObject(points[i + 1]).subtract(points[i]).normalized().multiply(0.1).rotate(Math.PI / 2);
+    //         n = n1.add(n2).normalized().multiply(0.1);
+    //       }
+    //       // const n = Stitch.Math.Vector.fromObject(p).normalized().multiply(0.1).rotate(Math.PI / 2);
+    //       quadStrip.push(new Stitch.Math.Vector(
+    //         Stitch.Math.Utils.map(points[i].x + n.x, -5, 5, 0, 800),
+    //         Stitch.Math.Utils.map(points[i].y + n.y, -5, 5, 0, 800),
+    //       ));
+    //       quadStrip.push(new Stitch.Math.Vector(
+    //         Stitch.Math.Utils.map(points[i].x - n.x, -5, 5, 0, 800),
+    //         Stitch.Math.Utils.map(points[i].y - n.y, -5, 5, 0, 800),
+    //       ));
+    //     }
+    //     const routedSatin = new Stitch.Core.RoutedRuns.RoutedSatin(quadStrip);
+    //     routedSatins.push(routedSatin);
+    //     shapes.push(routedSatin.getShape());
+    //   }
+    // }).run().then(() => {
+    //   let pattern = new Stitch.Core.Pattern(800, 800);
+    //   let thread = pattern.addThread(200, 0, 0);
+    //   thread.addRun(new Stitch.Core.RoutedRuns.AutoRoute(routedSatins));
+    //   stitchPlan = pattern.getStitchPlan(800, 800, 10);
+    // });
+  }
 
 
 
   async function setup() {
     createCanvas(800, 800);
     await Stitch.init();
+    prepStitchPlan();
   }
 
   async function draw() {
