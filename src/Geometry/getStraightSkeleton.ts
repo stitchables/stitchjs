@@ -6,7 +6,8 @@ import { isInitialized } from '../index';
 const writer = new GeoJSONWriter();
 export function getStraightSkeleton(polygon: Polygon): (str8.Skeleton | null)[] {
   if (!isInitialized || !str8.isReady()) {
-    throw new Error("str8 package is not ready... call 'await Stitch.init()' first.");
+    console.warn("str8 package is not ready... call 'await Stitch.init()' first.");
+    return [null];
   }
   return str8.buildFromGeoJSON(writer.write(polygon));
 }

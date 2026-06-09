@@ -6,4 +6,5 @@ export enum StitchType {
   START,
   STOP,
   TRAVEL,
+  UNDERLAY,
 }

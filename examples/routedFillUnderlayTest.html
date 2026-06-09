@@ -47,7 +47,7 @@
       angle: 0.25 * Math.PI,
       underlays: [{
         rowSpacingMm: 0.2,
-        insetMm: 10,
+        insetMm: 2,
       }]
     });
     const autoRoute = new Stitch.Core.RoutedRuns.AutoRoute([routedFill], {
@@ -73,7 +73,11 @@
       for (let i = 1; i < stitchLimit; i++) {
         stroke(map(i, max(stitchLimit - 3, 1), stitchLimit, 255, 0));
         const curr = stitches[i].position;
-        line(prev.x, prev.y, curr.x, curr.y);
+        if (stitches[i - 1].stitchType === 0) {
+          line(prev.x + 5 * Math.random(), prev.y + 5 * Math.random(), curr.x + 5 * Math.random(), curr.y + 5 * Math.random());
+        } else {
+          line(prev.x, prev.y, curr.x, curr.y);
+        }
         prev = curr;
       }
     }

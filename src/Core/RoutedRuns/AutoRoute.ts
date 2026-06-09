@@ -1,7 +1,7 @@
 import { IRun } from '../IRun';
 import { IRoutedRun } from './IRoutedRun';
 import * as graphlib from '@dagrejs/graphlib';
-import { Coordinate, Point, LineString, Polygon } from 'jsts/org/locationtech/jts/geom';
+import { Coordinate, LineString, Point, Polygon } from 'jsts/org/locationtech/jts/geom';
 import CascadedPolygonUnion from 'jsts/org/locationtech/jts/operation/union/CascadedPolygonUnion';
 import { RelateOp } from 'jsts/org/locationtech/jts/operation/relate';
 import { OverlayOp } from 'jsts/org/locationtech/jts/operation/overlay';
@@ -550,6 +550,7 @@ export class AutoRoute implements IRun {
         const access = { entry: step.entry, exit: step.exit };
         const underlay = routedRun.getUnderlayStitches(pixelsPerMm, access);
         if (underlay.length > 0) {
+          underlay.forEach((s) => (s.stitchType = StitchType.UNDERLAY));
           stitches.push(...underlay);
           access.entry = step.exit;
         }

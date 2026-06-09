@@ -129,12 +129,7 @@ export class AutoFill implements IRun {
     const fillStitchGraph = this.buildFillStitchGraph(fillSegments);
     const travelGraph = this.buildTravelGraph(fillStitchGraph, pixelsPerMm);
     const path = this.findStitchPath(fillStitchGraph, travelGraph);
-    const stitches = this.pathToStitches(
-      path,
-      travelGraph,
-      fillStitchGraph,
-      pixelsPerMm,
-    ).map((c) => new Stitch(new Vector(c.x, c.y)));
+    const stitches = this.pathToStitches(path, travelGraph, fillStitchGraph, pixelsPerMm);
     if (this.startPosition.distance(stitches[0].position) > pixelsPerMm) {
       stitches[0].stitchType = StitchType.JUMP;
       stitches.unshift(new Stitch(this.startPosition, StitchType.START));
@@ -717,7 +712,7 @@ export class AutoFill implements IRun {
     travelGraph: graphlib.Graph,
     fillStitchGraph: graphlib.Graph,
     pixelsPerMm: number,
-  ): Coordinate[] {
+  ): Stitch[] {
     const patternRowStitches = [];
     for (let i = 0; i < this.fillPattern.length; i++) {
       const rowStitches = [this.fillPattern[i].rowOffsetMm * pixelsPerMm];
@@ -771,7 +766,12 @@ export class AutoFill implements IRun {
     const stitches = [];
 
     if (collapsedPath[0][2] !== 'segment') {
-      stitches.push(travelGraph.node(path[0][0]).geometry.getCoordinate());
+      stitches.push(
+        new Stitch(
+          Vector.fromObject(travelGraph.node(path[0][0]).geometry.getCoordinate()),
+          StitchType.START,
+        ),
+      );
     }
 
     for (let i = 0, n = collapsedPath.length; i < n; i++) {
@@ -802,7 +802,7 @@ export class AutoFill implements IRun {
 
         const minRowBasis = Math.min(rowStartBasis.x, rowEndBasis.x);
         const maxRowBasis = Math.max(rowStartBasis.x, rowEndBasis.x);
-        stitches.push(new Coordinate(rowStart.x, rowStart.y));
+        stitches.push(new Stitch(rowStart, StitchType.NORMAL));
         for (
           let j =
             rowStartBasis.x < rowEndBasis.x
@@ -817,7 +817,7 @@ export class AutoFill implements IRun {
           if (curr >= minRowBasis && curr <= maxRowBasis) {
             const w = Utils.map(curr, rowStartBasis.x, rowEndBasis.x, 0, 1);
             const l = rowStart.lerp(rowEnd, w);
-            stitches.push(new Coordinate(l.x, l.y));
+            stitches.push(new Stitch(l, StitchType.NORMAL));
           }
         }
 
@@ -861,7 +861,12 @@ export class AutoFill implements IRun {
               pixelsPerMm,
             );
             for (let i = 0, n = resamp.getNumPoints(); i < n; i++) {
-              stitches.push(resamp.getCoordinateN(i));
+              stitches.push(
+                new Stitch(
+                  Vector.fromObject(resamp.getCoordinateN(i)),
+                  StitchType.TRAVEL,
+                ),
+              );
             }
           }
         }
