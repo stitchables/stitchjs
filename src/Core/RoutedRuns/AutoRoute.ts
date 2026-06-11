@@ -313,7 +313,6 @@ class Component {
       }
     }
 
-
     return grouped;
   }
   getTravel(entry: Point, exit: Point): LineString {
@@ -391,14 +390,16 @@ export class AutoRoute implements IRun {
       const componentTravels = [];
       for (const j of runsQueue) {
         const run = runs[j];
-        if (RelateOp.intersects(boundary, run.boundary)) {
+        const im = RelateOp.relate(boundary, run.boundary);
+        if (Math.max(im.get(0, 0), im.get(0, 1), im.get(1, 0), im.get(1, 1)) > 0) {
           componentRuns.push(run);
           runsQueue.delete(j);
         }
       }
       for (const j of travelsQueue) {
         const travel = travels[j];
-        if (RelateOp.intersects(boundary, travel)) {
+        const im = RelateOp.relate(boundary, travel);
+        if (Math.max(im.get(0, 0), im.get(0, 1), im.get(1, 0), im.get(1, 1)) > 0) {
           componentTravels.push(travel);
           travelsQueue.delete(j);
         }
