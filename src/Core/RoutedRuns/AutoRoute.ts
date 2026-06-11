@@ -149,7 +149,10 @@ class Component {
   }
 
   getStitchPlan(entry: Point, exit: Point): TravelPlanStep[] {
-    if (this.runs.length === 0) return [this.getTravel(entry, exit)];
+    if (this.runs.length === 0) {
+      if (DistanceOp.distance(entry, exit) < 0.00001) return [];
+      return [this.getTravel(entry, exit)];
+    }
     if (this.runs.length === 1 && this.travels.length === 0) {
       return [
         {
@@ -294,14 +297,22 @@ class Component {
         current.push(...step.getCoordinates());
       } else {
         if (current.length > 0) {
-          grouped.push(removeBacktracking(geometryFactory.createLineString(current)));
+          const backtracked = removeBacktracking(current);
+          if (backtracked.length > 1) {
+            grouped.push(geometryFactory.createLineString(backtracked));
+          }
           current = [];
         }
         grouped.push(step);
       }
     }
-    if (current.length > 0)
-      grouped.push(removeBacktracking(geometryFactory.createLineString(current)));
+    if (current.length > 0) {
+      const backtracked = removeBacktracking(current);
+      if (backtracked.length > 1) {
+        grouped.push(geometryFactory.createLineString(backtracked));
+      }
+    }
+
 
     return grouped;
   }
@@ -716,10 +727,10 @@ function cross(a: Coordinate, b: Coordinate, c: Coordinate) {
 function dot(a: Coordinate, b: Coordinate, c: Coordinate) {
   return (b.x - a.x) * (c.x - b.x) + (b.y - a.y) * (c.y - b.y);
 }
-function removeBacktracking(line: LineString, eps = 1e-9): LineString {
+function removeBacktracking(line: Coordinate[], eps = 1e-9): Coordinate[] {
   const out: Coordinate[] = [];
 
-  for (const p of line.getCoordinates()) {
+  for (const p of line) {
     if (out.length && almostSame(out[out.length - 1], p, eps)) continue;
 
     out.push(p);
@@ -762,5 +773,5 @@ function removeBacktracking(line: LineString, eps = 1e-9): LineString {
     }
   }
 
-  return geometryFactory.createLineString(out);
+  return out;
 }
