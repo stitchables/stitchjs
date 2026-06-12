@@ -23,6 +23,7 @@ export class RoutedSatin implements IRoutedRun {
   densityMm: number;
   travelLengthMm: number;
   travelToleranceMm: number;
+  splitSatinMm: number | undefined;
   underlays: {
     type: string;
     options?: UnderlayOptions;
@@ -34,6 +35,7 @@ export class RoutedSatin implements IRoutedRun {
       densityMm?: number;
       travelLengthMm?: number;
       travelToleranceMm?: number;
+      splitSatinMm?: number;
       underlays?: {
         type: string;
         options?: UnderlayOptions;
@@ -44,6 +46,7 @@ export class RoutedSatin implements IRoutedRun {
     this.densityMm = options?.densityMm ?? 0.2;
     this.travelLengthMm = options?.travelLengthMm ?? 3;
     this.travelToleranceMm = options?.travelToleranceMm ?? 0.1;
+    this.splitSatinMm = options?.splitSatinMm;
     this.underlays = options?.underlays ?? [];
   }
 
@@ -98,6 +101,7 @@ export class RoutedSatin implements IRoutedRun {
       densityMm: this.densityMm,
       travelLengthMm: this.travelLengthMm,
       travelToleranceMm: this.travelToleranceMm,
+      splitSatinMm: this.splitSatinMm,
     };
     const classicSatin = new ClassicSatin(this.quadStripVertices, options);
     return classicSatin.getStitches(pixelsPerMm);
