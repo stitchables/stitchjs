@@ -38,6 +38,7 @@ export class ClassicSatin implements IRun {
   densityMm: number;
   travelLengthMm: number;
   travelToleranceMm: number;
+  splitSatinMm: number | undefined;
   underlays: { type: string; options?: UnderlayOptions }[];
   lineData: { left: SatinLineData; right: SatinLineData; center: SatinLineData };
   isClosed: boolean;
@@ -50,6 +51,7 @@ export class ClassicSatin implements IRun {
       densityMm?: number;
       travelLengthMm?: number;
       travelToleranceMm?: number;
+      splitSatinMm?: number;
       underlays?: { type: string; options?: UnderlayOptions }[];
     },
   ) {
@@ -66,6 +68,7 @@ export class ClassicSatin implements IRun {
     this.densityMm = options?.densityMm ?? 0.4;
     this.travelLengthMm = options?.travelLengthMm ?? 3;
     this.travelToleranceMm = options?.travelToleranceMm ?? 1;
+    this.splitSatinMm = options?.splitSatinMm;
     this.underlays = options?.underlays ?? [];
   }
 
@@ -287,17 +290,38 @@ export class ClassicSatin implements IRun {
   getFullSatin(pixelsPerMm: number): LineString {
     const countCrosses =
       Math.round(this.lineData.center.len / (this.densityMm * pixelsPerMm)) + 1;
-    const coords: Coordinate[] = [];
+    const rawCoords: Coordinate[] = [];
     for (let i = 0; i < (this.isClosed ? countCrosses : countCrosses + 1); i++) {
       const locationIndex = this.lineData.center.lenLocMap.getLocation(
         (i / countCrosses) * this.lineData.center.len,
       );
       const left: Coordinate = this.lineData.left.locIndex.extractPoint(locationIndex);
       const right: Coordinate = this.lineData.right.locIndex.extractPoint(locationIndex);
-      coords.push(left);
-      coords.push(right);
+      rawCoords.push(left);
+      rawCoords.push(right);
     }
-    return geometryFactory.createLineString(coords);
+
+    if (this.splitSatinMm === undefined || this.splitSatinMm <= 0) {
+      return geometryFactory.createLineString(rawCoords);
+    }
+
+    const splitPx = this.splitSatinMm * pixelsPerMm;
+    const finalCoords: Coordinate[] = [rawCoords[0]];
+    for (let i = 1; i < rawCoords.length; i++) {
+      const a = rawCoords[i - 1];
+      const b = rawCoords[i];
+      const dist = a.distance(b);
+      if (dist > splitPx) {
+        const numSegments = Math.ceil(dist / splitPx);
+        for (let j = 1; j <= numSegments; j++) {
+          const t = j / numSegments;
+          finalCoords.push(new Coordinate(a.x + t * (b.x - a.x), a.y + t * (b.y - a.y)));
+        }
+      } else {
+        finalCoords.push(b);
+      }
+    }
+    return geometryFactory.createLineString(finalCoords);
   }
 
   getUnderlayOptionsOrDefault(
