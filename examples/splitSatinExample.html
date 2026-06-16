@@ -5,41 +5,15 @@
   <script src="../dist/stitch.global.js"></script>
   <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
   <style>
-    body {
-      margin: 0;
-      background: #f0f0f0;
-      font-family: system-ui, sans-serif;
-    }
-    #labels {
-      position: fixed;
-      top: 16px;
-      left: 0;
-      right: 0;
-      display: flex;
-      justify-content: center;
-      flex-wrap: wrap;
-      gap: 10px;
-      padding: 0 16px;
-      pointer-events: none;
-      z-index: 1;
-    }
-    #labels span {
-      background: rgba(255, 255, 255, 0.85);
-      padding: 6px 12px;
-      border-radius: 6px;
-      font-size: 13px;
-      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.12);
-    }
+    body { margin: 0; background: #f0f0f0; font: 13px system-ui, sans-serif; }
+    #labels { position: fixed; top: 12px; left: 12px; pointer-events: none; }
+    #render { position: absolute; inset: 0; }
+    #render canvas { position: absolute; inset: 0; margin: auto; pointer-events: none; }
   </style>
 </head>
 <body>
-<div id="labels">
-  <span>AutoRoute</span>
-  <span>1: no split</span>
-  <span>2: split 8mm</span>
-  <span>3: split 5mm</span>
-  <span>4: split 3mm</span>
-</div>
+<div id="labels">1: no split · 2: split · 3: stagger · 4: square stagger</div>
+<div id="render"></div>
 <script>
   function makeTaperedSatin(centerX, topY, length, startWidth, endWidth, steps) {
     const vertices = [];
@@ -53,51 +27,69 @@
     return vertices;
   }
 
-  const pattern = new Stitch.Core.Pattern(900, 420);
-  const travelLengthMm = 2;
+  const split = { maxWidthMm: 7 };
+  const splitStaggered = { maxWidthMm: 7, staggerCycles: 4, staggerAmountMm: 2 };
   const taper = { topY: 50, length: 320, startWidth: 8, endWidth: 90, steps: 28 };
+  const opts = { densityMm: 0.4, travelLengthMm: 2 };
 
-  const routedSatins = [
-    new Stitch.Core.RoutedRuns.RoutedSatin(
-      makeTaperedSatin(110, taper.topY, taper.length, taper.startWidth, taper.endWidth, taper.steps),
-      { densityMm: 0.4, travelLengthMm },
-    ),
-    new Stitch.Core.RoutedRuns.RoutedSatin(
-      makeTaperedSatin(310, taper.topY, taper.length, taper.startWidth, taper.endWidth, taper.steps),
-      { densityMm: 0.4, travelLengthMm, splitSatinMm: 8 },
-    ),
-    new Stitch.Core.RoutedRuns.RoutedSatin(
-      makeTaperedSatin(510, taper.topY, taper.length, taper.startWidth, taper.endWidth, taper.steps),
-      { densityMm: 0.4, travelLengthMm, splitSatinMm: 5 },
-    ),
-    new Stitch.Core.RoutedRuns.RoutedSatin(
-      makeTaperedSatin(710, taper.topY, taper.length, taper.startWidth, taper.endWidth, taper.steps),
-      { densityMm: 0.3, travelLengthMm, splitSatinMm: 3 },
-    ),
-  ];
-
+  const pattern = new Stitch.Core.Pattern(900, 420);
   const thread = pattern.addThread(190, 55, 55);
-  thread.addRun(new Stitch.Core.RoutedRuns.AutoRoute(routedSatins));
+  thread.addRun(new Stitch.Core.RoutedRuns.AutoRoute([
+    new Stitch.Core.RoutedRuns.RoutedSatin(
+      makeTaperedSatin(120, taper.topY, taper.length, taper.startWidth, taper.endWidth, taper.steps),
+      opts,
+    ),
+    new Stitch.Core.RoutedRuns.RoutedSatin(
+      makeTaperedSatin(320, taper.topY, taper.length, taper.startWidth, taper.endWidth, taper.steps),
+      { ...opts, split },
+    ),
+    new Stitch.Core.RoutedRuns.RoutedSatin(
+      makeTaperedSatin(520, taper.topY, taper.length, taper.startWidth, taper.endWidth, taper.steps),
+      { ...opts, split: splitStaggered },
+    ),
+    new Stitch.Core.RoutedRuns.RoutedSatin(
+      makeTaperedSatin(720, 50, 50, 50, 50, 40),
+      { ...opts, split: splitStaggered },
+    ),
+  ]));
 
-  let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5, 1.5);
-  canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
-  document.body.append(canvas);
+  function render() {
+    const w = window.innerWidth;
+    const h = window.innerHeight;
+    const container = document.getElementById('render');
+    container.replaceChildren();
 
-  let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'splitSatinExample', 10, 500);
+    const canvas = Stitch.Graphics.getCanvas(pattern, w, h, 5, 1.5);
+    container.append(canvas);
+
+    const plan = pattern.getStitchPlan(w, h, 5);
+    const scale = 5 / plan.pixelsPerUnit;
+    const translate = new Stitch.Math.Vector(0.5 * (w - plan.width), 0.5 * (h - plan.height));
+    const dots = document.createElement('canvas');
+    dots.width = w;
+    dots.height = h;
+    const ctx = dots.getContext('2d');
+    container.append(dots);
+
+    for (const t of plan.threads) {
+      for (const run of t.runs) {
+        for (const stitch of run) {
+          if (stitch.stitchType !== 0) continue;
+          const p = stitch.position.multiply(scale).add(translate);
+          ctx.fillStyle = '#000';
+          ctx.fillRect(p.x, p.y, 2, 2);
+        }
+      }
+    }
+  }
+
+  render();
+
+  const modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'splitSatinExample', 10, 500);
   document.body.appendChild(modal.container);
-  window.addEventListener('click', (e) => {
-    if (e.target === modal.container) modal.close();
-  });
-  window.addEventListener('keydown', (e) => {
-    if (e.code === 'KeyD') modal.open();
-  });
-
-  window.addEventListener('resize', Stitch.Browser.Utils.debounce(() => {
-    canvas.remove();
-    canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5, 1.5);
-    canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
-    document.body.append(canvas);
-  }, 10));
+  window.addEventListener('click', (e) => { if (e.target === modal.container) modal.close(); });
+  window.addEventListener('keydown', (e) => { if (e.code === 'KeyD') modal.open(); });
+  window.addEventListener('resize', Stitch.Browser.Utils.debounce(render, 10));
 </script>
 </body>
 </html>

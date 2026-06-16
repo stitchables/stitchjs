@@ -6,7 +6,7 @@ import CascadedPolygonUnion from 'jsts/org/locationtech/jts/operation/union/Casc
 import ArrayList from 'jsts/java/util/ArrayList';
 import Polygonizer from 'jsts/org/locationtech/jts/operation/polygonize/Polygonizer';
 import { geometryFactory } from '../../util/jsts';
-import { ClassicSatin } from '../Runs/ClassicSatin';
+import { ClassicSatin, SatinSplitOptions } from '../Runs/ClassicSatin';
 
 interface UnderlayOptions {
   stitchLengthMm?: number;
@@ -23,7 +23,7 @@ export class RoutedSatin implements IRoutedRun {
   densityMm: number;
   travelLengthMm: number;
   travelToleranceMm: number;
-  splitSatinMm: number | undefined;
+  split: SatinSplitOptions | undefined;
   underlays: {
     type: string;
     options?: UnderlayOptions;
@@ -35,7 +35,7 @@ export class RoutedSatin implements IRoutedRun {
       densityMm?: number;
       travelLengthMm?: number;
       travelToleranceMm?: number;
-      splitSatinMm?: number;
+      split?: SatinSplitOptions;
       underlays?: {
         type: string;
         options?: UnderlayOptions;
@@ -46,7 +46,7 @@ export class RoutedSatin implements IRoutedRun {
     this.densityMm = options?.densityMm ?? 0.2;
     this.travelLengthMm = options?.travelLengthMm ?? 3;
     this.travelToleranceMm = options?.travelToleranceMm ?? 0.1;
-    this.splitSatinMm = options?.splitSatinMm;
+    this.split = options?.split;
     this.underlays = options?.underlays ?? [];
   }
 
@@ -101,7 +101,7 @@ export class RoutedSatin implements IRoutedRun {
       densityMm: this.densityMm,
       travelLengthMm: this.travelLengthMm,
       travelToleranceMm: this.travelToleranceMm,
-      splitSatinMm: this.splitSatinMm,
+      split: this.split,
     };
     const classicSatin = new ClassicSatin(this.quadStripVertices, options);
     return classicSatin.getStitches(pixelsPerMm);
