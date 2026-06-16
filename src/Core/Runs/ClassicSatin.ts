@@ -383,7 +383,7 @@ export class ClassicSatin implements IRun {
     pixelsPerMm: number,
   ): number {
     const slotWidthT = 1 / numSegments;
-    const staggerAmountMm = split.staggerAmountMm ?? 0.75 * split.maxWidthMm;
+    const staggerAmountMm = split.staggerAmountMm ?? 2;
     const maxOffsetT = Math.min((staggerAmountMm * pixelsPerMm) / dist, slotWidthT);
     const tierFill = Math.min(1, dist / (numSegments * splitPx));
     const magnitudeScale = ((crossIdx % staggerCycles) + 1) / staggerCycles;
