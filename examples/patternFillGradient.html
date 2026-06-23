@@ -118,7 +118,7 @@
           label: 'ramp: 1 → 0',
           x: originX + squareSize + gap,
           y: originY,
-          angle: 1.5,
+          angle: Math.PI / 4,
           gradient: {
             mode: 'ramp',
             start: 1,
@@ -130,7 +130,6 @@
           label: 'plateau: center 0.5, width 0.2',
           x: originX,
           y: originY + squareSize + gap,
-          angle: 1.5,
           gradient: {
             mode: 'plateau',
             center: 0.5,
