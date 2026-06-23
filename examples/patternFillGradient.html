@@ -1,0 +1,220 @@
+<!doctype html>
+<html>
+  <head>
+    <title>PatternFill Gradient Row Spacing</title>
+    <style>
+      body {
+        margin: 0;
+        background: #f4f4f4;
+        font-family: system-ui, sans-serif;
+      }
+      #legend {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        z-index: 1;
+        background: rgba(255, 255, 255, 0.92);
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        padding: 10px 14px;
+        font-size: 13px;
+        line-height: 1.5;
+        max-width: 320px;
+      }
+      #legend h1 {
+        margin: 0 0 8px;
+        font-size: 15px;
+      }
+      #legend ul {
+        margin: 0;
+        padding-left: 18px;
+      }
+    </style>
+    <script src="../dist/stitch.global.js"></script>
+    <script>
+      window.Stitch ||
+        document.write(
+          '<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\\x3C/script>',
+        );
+    </script>
+  </head>
+  <body>
+    <div id="legend">
+      <h1>Row spacing gradient</h1>
+      <ul>
+        <li>Top-left: ramp 0 → 1</li>
+        <li>Top-right: ramp 1 → 0, angle 45°</li>
+        <li>Bottom-left: plateau (center 0.5, width 0.2)</li>
+        <li>Bottom-right: plateau (center 0.5, width 0.5)</li>
+        <li>Bottom center: red + blue overlay (staggered crossover)</li>
+      </ul>
+    </div>
+    <script>
+      const rowSpacingStartMm = 0.25;
+      const rowSpacingEndMm = 1.25;
+      // Overlay uses a gentler sparse spacing + narrow crossover so both threads
+      // aren't sparse in the middle at the same time
+      const overlayEndMm = 0.65;
+      const overlayCrossover = 0.45;
+      const squareSize = 140;
+      const gap = 40;
+      const originX = 60;
+      const originY = 60;
+
+      const fillPatternRows = [{ rowOffsetMm: 0, rowPatternMm: [3] }];
+
+      function square(x, y, size) {
+        return Stitch.Math.Polyline.fromArrays(
+          [
+            [x, y],
+            [x + size, y],
+            [x + size, y + size],
+            [x, y + size],
+            [x, y],
+          ],
+          true,
+        );
+      }
+
+      function squareEndpoints(shell) {
+        return {
+          start: shell.vertices[0],
+          end: shell.vertices[shell.vertices.length - 2],
+        };
+      }
+
+      function addAutoFill(thread, shell, gradient, angle = 0) {
+        const { start, end } = squareEndpoints(shell);
+        thread.addRun(
+          new Stitch.Core.Runs.AutoFill(
+            shell,
+            [],
+            angle,
+            rowSpacingStartMm,
+            fillPatternRows,
+            3,
+            start,
+            end,
+            undefined,
+            false,
+            gradient,
+          ),
+        );
+      }
+
+      const examples = [
+        {
+          label: 'ramp: 0 → 1',
+          x: originX,
+          y: originY,
+          gradient: {
+            mode: 'ramp',
+            start: 0,
+            end: 1,
+            endRowSpacingMm: rowSpacingEndMm,
+          },
+        },
+        {
+          label: 'ramp: 1 → 0',
+          x: originX + squareSize + gap,
+          y: originY,
+          angle: 1.5,
+          gradient: {
+            mode: 'ramp',
+            start: 1,
+            end: 0,
+            endRowSpacingMm: rowSpacingEndMm,
+          },
+        },
+        {
+          label: 'plateau: center 0.5, width 0.2',
+          x: originX,
+          y: originY + squareSize + gap,
+          angle: 1.5,
+          gradient: {
+            mode: 'plateau',
+            center: 0.5,
+            plateauWidth: 0.2,
+            endRowSpacingMm: rowSpacingEndMm,
+          },
+        },
+        {
+          label: 'plateau: center 0.5, width 0.5',
+          x: originX + squareSize + gap,
+          y: originY + squareSize + gap,
+          gradient: {
+            mode: 'plateau',
+            center: 0.5,
+            plateauWidth: 0.5,
+            endRowSpacingMm: rowSpacingEndMm,
+          },
+        },
+      ];
+
+      const pattern = new Stitch.Core.Pattern(400, 580);
+      const thread = pattern.addThread(200, 0, 0);
+
+      for (const example of examples) {
+        addAutoFill(
+          thread,
+          square(example.x, example.y, squareSize),
+          example.gradient,
+          example.angle ?? 0,
+        );
+      }
+
+      const overlayY = originY + 2 * (squareSize + gap);
+      const overlayX = (400 - squareSize) / 2;
+      const overlayShell = square(overlayX, overlayY, squareSize);
+
+      const redThread = pattern.addThread(220, 50, 50);
+      addAutoFill(redThread, overlayShell, {
+        mode: 'ramp',
+        start: overlayCrossover,
+        end: 1,
+        endRowSpacingMm: overlayEndMm,
+      });
+
+      const blueThread = pattern.addThread(50, 90, 220);
+      addAutoFill(blueThread, overlayShell, {
+        mode: 'ramp',
+        start: 1,
+        end: overlayCrossover,
+        endRowSpacingMm: overlayEndMm,
+      });
+
+      let canvas = Stitch.Graphics.getCanvas(
+        pattern,
+        window.innerWidth,
+        window.innerHeight,
+        5,
+      );
+      canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+      document.body.append(canvas);
+
+      const modal = Stitch.Browser.Modal.createDownloadModal(
+        pattern,
+        'patternFillGradient',
+        10,
+        500,
+      );
+      document.body.appendChild(modal.container);
+      window.addEventListener('click', (e) => {
+        if (e.target === modal.container) modal.close();
+      });
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'KeyD') modal.open();
+      });
+
+      window.addEventListener(
+        'resize',
+        Stitch.Browser.Utils.debounce(() => {
+          canvas.remove();
+          canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
+          canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+          document.body.append(canvas);
+        }, 10),
+      );
+    </script>
+  </body>
+</html>
