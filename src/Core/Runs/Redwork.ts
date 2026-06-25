@@ -67,7 +67,6 @@ export class Redwork implements IRun {
       precisionModelScale?: number;
     },
   ) {
-
     this.stitchLengthMm = options?.stitchLengthMm ?? 3;
     this.stitchToleranceMm = options?.stitchToleranceMm ?? 0.1;
 
@@ -158,17 +157,16 @@ export class Redwork implements IRun {
           },
         },
       );
-      const { point, lineIndex, sequenceIndex } = component.pointTree
-        .nearestNeighbour(
-          entryPoint.getEnvelopeInternal(),
-          { point: entryPoint },
-          {
-            distance(item1: ItemBoundable, item2: ItemBoundable) {
-              if (item1 === item2) return Number.MAX_VALUE;
-              return item1.getItem().point.distance(item2.getItem().point);
-            },
+      const { point, lineIndex, sequenceIndex } = component.pointTree.nearestNeighbour(
+        entryPoint.getEnvelopeInternal(),
+        { point: entryPoint },
+        {
+          distance(item1: ItemBoundable, item2: ItemBoundable) {
+            if (item1 === item2) return Number.MAX_VALUE;
+            return item1.getItem().point.distance(item2.getItem().point);
           },
-        );
+        },
+      );
       if (lineIndex !== undefined && sequenceIndex !== undefined) {
         if (!(lineIndex in splits)) splits[lineIndex] = new Set<number>();
         splits[lineIndex].add(sequenceIndex);
@@ -228,7 +226,7 @@ export class Redwork implements IRun {
       const [n1, n2] = [p1.toString(), p2.toString()];
       const [c1, c2] = [p1.getCoordinate(), p2.getCoordinate()];
       const forward = geometryFactory.createLineString([c1, c2]);
-      const backward = geometryFactory.createLineString([c2, c1])
+      const backward = geometryFactory.createLineString([c2, c1]);
       pslg.setEdge(n1, n2, { type: 'JUMP', line: forward }, 'forward');
       pslg.setEdge(n2, n1, { type: 'JUMP', line: backward }, 'backward');
     }

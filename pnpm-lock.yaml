@@ -8,6 +8,9 @@ dependencies:
   '@dagrejs/graphlib':
     specifier: ^4.0.1
     version: 4.0.1
+  '@matthewjacobson/ess':
+    specifier: ^0.2.0
+    version: 0.2.0
   '@matthewjacobson/str8':
     specifier: ^0.2.0
     version: 0.2.0
@@ -525,6 +528,11 @@ packages:
       globby: 11.1.0
       read-yaml-file: 1.1.0
     dev: true
+
+  /@matthewjacobson/ess@0.2.0:
+    resolution: {integrity: sha512-EP701KVpg/lEOKspvi+wWUSu8EO5GvFW9Z+7K19EvG7YaePyXgTJbOXxBoOMbG88ZbVbEK3bjfJFH40Ynllr+w==}
+    engines: {node: '>=16'}
+    dev: false
 
   /@matthewjacobson/str8@0.2.0:
     resolution: {integrity: sha512-RbrGQ1rB2iZb9BHikd3CVsVu1F/wSW5wX9DStaKVTZOpqlle59ptx0tqXiyhrUtiCFLLYJVByt+i90trTqy+HA==}

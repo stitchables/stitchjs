@@ -37,13 +37,7 @@
     const lines = jsts.geom.util.LinearComponentExtracter.getLines(geometry).toArray()
       .map(l => l.getCoordinates().map(c => new Stitch.Math.Vector(c.x, c.y)));
     if (includeBorder) {
-      lines.push([
-        new Stitch.Math.Vector(0, 0),
-        new Stitch.Math.Vector(width, 0),
-        new Stitch.Math.Vector(width, height),
-        new Stitch.Math.Vector(0, height),
-        new Stitch.Math.Vector(0, 0),
-      ]);
+      lines.push(geometry.getEnvelope().getExteriorRing().getCoordinates().map(c => new Stitch.Math.Vector(c.x, c.y)));
     }
     run = new Stitch.Core.Runs.Redwork(lines, {
       entry: new Stitch.Math.Vector(300, 0),
