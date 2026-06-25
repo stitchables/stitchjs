@@ -39,7 +39,9 @@
         new Stitch.Math.Vector(450, 450),
       ]
     },
-  ]));
+  ], {
+    separationMm: 3,
+  }));
 
   let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
   canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');

@@ -50,10 +50,9 @@ export class StreamlineFill implements IRun {
     this.stitchLengthMm = options?.stitchLengthMm || 3;
     this.stitchToleranceMm = options?.stitchToleranceMm || 1;
     if (options?.vectorField === undefined) {
-      const offset = { x: 10000 * Math.random() + 1000, y: 10000 * Math.random() + 1000 };
       this.vectorField = (x, y) => {
         const angle = Utils.map(
-          noise((x + offset.x) / 400, (y + offset.y) / 400),
+          noise((x + 123456) / 400, (y + 345678) / 400),
           0,
           1,
           0,
