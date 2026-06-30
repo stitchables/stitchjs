@@ -11,12 +11,12 @@
 <body style="margin: 0;">
 <script>
 
-  // const [file, includeBorder] = ['./GreatScott.svg', false];
-  // const [file, includeBorder] = ['./Maze.svg', false];
-  const [file, includeBorder] = ['./torus.txt', true];
-  // const [file, includeBorder] = ['./Sugar_Skull.txt', false];
-  // const [file, includeBorder] = ['./firebird.txt', false];
-  // const [file, includeBorder] = ['./sparrow.txt', false];
+  // const [file, includeBorder, density] = ['./GreatScott.svg', false, 0.25];
+  // const [file, includeBorder, density] = ['./Maze.svg', false, 0.25];
+  // const [file, includeBorder, density] = ['./torus.txt', true, 0.25];
+  const [file, includeBorder, density] = ['./Sugar_Skull.txt', false, 2];
+  // const [file, includeBorder, density] = ['./firebird.txt', false, 0.25];
+  // const [file, includeBorder, density] = ['./sparrow.txt', false, 0.1];
 
   function fitGeometryInsideScreen(g) {
     const envelope = g.getEnvelopeInternal();
@@ -32,8 +32,9 @@
   let geometry, pattern, run, stitches;
   async function setup() {
     createCanvas(window.innerWidth, window.innerHeight);
+    await Stitch.init();
     const svgStrings = await loadStrings(file);
-    geometry = fitGeometryInsideScreen(reader.read(svg2wkt.svgToWkt(svgStrings.join('\n'), { flipY: false, density: 1 })));
+    geometry = fitGeometryInsideScreen(reader.read(svg2wkt.svgToWkt(svgStrings.join('\n'), { flipY: false, density })));
     const lines = jsts.geom.util.LinearComponentExtracter.getLines(geometry).toArray()
       .map(l => l.getCoordinates().map(c => new Stitch.Math.Vector(c.x, c.y)));
     if (includeBorder) {
@@ -44,7 +45,7 @@
       stitchLengthMm: 3,
       stitchToleranceMm: 0.1,
       densifyDistancePx: 10,
-      precisionModelScale: 1,
+      precisionModelScale: 10,
     });
     pattern = new Stitch.Core.Pattern(width, height);
     const thread = pattern.addThread(0, 0, 0);

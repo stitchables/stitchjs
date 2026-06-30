@@ -1,57 +1,24 @@
 import { IRun } from '../IRun';
 import { Vector } from '../../Math/Vector';
-import { Coordinate, LineString, PrecisionModel } from 'jsts/org/locationtech/jts/geom';
+import {
+  Coordinate,
+  LineString,
+  MultiLineString,
+  PrecisionModel,
+} from 'jsts/org/locationtech/jts/geom';
 import GeometryNoder from 'jsts/org/locationtech/jts/noding/snapround/GeometryNoder';
 import ItemBoundable from 'jsts/org/locationtech/jts/index/strtree/ItemBoundable';
-import ItemDistance from 'jsts/org/locationtech/jts/index/strtree/ItemDistance';
-import { STRtree } from 'jsts/org/locationtech/jts/index/strtree';
 import LineMergeGraph from 'jsts/org/locationtech/jts/operation/linemerge/LineMergeGraph';
 import ConnectedSubgraphFinder from 'jsts/org/locationtech/jts/planargraph/algorithm/ConnectedSubgraphFinder';
 import Densifier from 'jsts/org/locationtech/jts/densify/Densifier';
+import DistanceOp from 'jsts/org/locationtech/jts/operation/distance/DistanceOp';
 import Arrays from 'jsts/java/util/Arrays';
 import { Stitch } from '../Stitch';
 import * as graphlib from '@dagrejs/graphlib';
 import { geometryFactory } from '../../util/jsts';
-import DisjointSet from '../../Optimize/DisjointSet';
 import { resample } from '../../Geometry/resample';
 import { StitchType } from '../EStitchType';
-
-class DisjointSetItemDistance {
-  disjointSet: DisjointSet;
-  connections: Record<string, { distance: number; p: any; q: any }>;
-  constructor(nodeIds: string[]) {
-    this.disjointSet = new DisjointSet(nodeIds);
-    this.connections = {};
-  }
-  getConnectionId(id1: string, id2: string) {
-    return id1.localeCompare(id2) < 0 ? `${id1},${id2}` : `${id2},${id1}`;
-  }
-  updateConnection(id1: string, id2: string, distance: number, p: any, q: any) {
-    const id = this.getConnectionId(id1, id2);
-    if (distance < this.connections[id]?.distance || Infinity) {
-      this.connections[id] = { distance, p, q };
-    }
-  }
-  distance(item1: ItemBoundable, item2: ItemBoundable) {
-    if (item1 === item2) return Number.MAX_VALUE;
-    const i1: { id: string; pointTree: STRtree } = item1.getItem();
-    const i2: { id: string; pointTree: STRtree } = item2.getItem();
-    const parent1 = this.disjointSet.find(i1.id);
-    const parent2 = this.disjointSet.find(i2.id);
-    if (parent1 === parent2) return Number.MAX_VALUE;
-    const [p, q] = i1.pointTree.nearestNeighbour(i2.pointTree, {
-      distance(item1: ItemBoundable, item2: ItemBoundable) {
-        return item1.getItem().point.distance(item2.getItem().point);
-      },
-    });
-    const distance = p.point.distance(q.point);
-    this.updateConnection(i1.id, i2.id, distance, p, q);
-    return p.point.distance(q.point);
-  }
-  get interfaces_() {
-    return [ItemDistance];
-  }
-}
+import { geometryMst } from '../../Geometry/geometryMst';
 
 export class Redwork implements IRun {
   stitchLengthMm: number;
@@ -80,9 +47,8 @@ export class Redwork implements IRun {
     });
 
     // node the original lines - splits lines where they intersect
-    const geometryNoder = new GeometryNoder(
-      new PrecisionModel(options?.precisionModelScale || 10),
-    );
+    const precisionModel = new PrecisionModel(options?.precisionModelScale || 10);
+    const geometryNoder = new GeometryNoder(precisionModel);
     const nodeLines = geometryNoder.node(Arrays.asList(denseLines));
 
     // create a graph from the nodelines - set the user data for lookup later
@@ -94,52 +60,35 @@ export class Redwork implements IRun {
     }
 
     // find the connected components
+    const geometryComponents: MultiLineString[] = [];
     const componentFinder = new ConnectedSubgraphFinder(lineMergeGraph);
     const components = componentFinder.getConnectedSubgraphs();
-
-    const componentTreeIds = [];
-    const componentTree = new STRtree();
-    for (let i = 0, it = components.iterator(); it.hasNext(); i++) {
-      const component = it.next();
-      const points = [];
-      const pointTree = new STRtree();
-      for (let jt = component.nodeIterator(); jt.hasNext(); ) {
-        const point = geometryFactory.createPoint(jt.next().getCoordinate());
-        points.push(point);
-        const pointLabel = { point, lineIndex: undefined, sequenceIndex: undefined };
-        pointTree.insert(point.getEnvelopeInternal(), pointLabel);
+    for (let it = components.iterator(); it.hasNext(); ) {
+      const lineComponents = [];
+      for (let jt = it.next().edgeIterator(); jt.hasNext(); ) {
+        lineComponents.push(jt.next().getLine());
       }
-      for (let jt = component.edgeIterator(); jt.hasNext(); ) {
-        const line = jt.next().getLine();
-        const lineIndex = line.getUserData();
-        for (let j = 1, n = line.getNumPoints(); j < n - 1; j++) {
-          const point = line.getPointN(j);
-          points.push(point);
-          const pointLabel = { point, lineIndex, sequenceIndex: j };
-          pointTree.insert(point.getEnvelopeInternal(), pointLabel);
-        }
-      }
-      pointTree.build();
-      const geometry = geometryFactory.createMultiPoint(points);
-      const componentLabel = { id: i.toString(), geometry, pointTree };
-      componentTreeIds.push(componentLabel.id);
-      componentTree.insert(geometry.getEnvelopeInternal(), componentLabel);
+      geometryComponents.push(geometryFactory.createMultiLineString(lineComponents));
     }
-    componentTree.build();
 
+    // calculate the minimum jumps necessary to connect all components
+    const jumps = geometryMst(geometryComponents);
+
+    // collect the split points created by the jumps
     const splits: Record<number, Set<number>> = [];
-    const jumps = [];
-    const itemDistance = new DisjointSetItemDistance(componentTreeIds);
-    while (!itemDistance.disjointSet.isFullyConnected()) {
-      const [ca, cb] = componentTree.nearestNeighbour(itemDistance);
-      itemDistance.disjointSet.union(ca.id, cb.id);
-      const connectionId = itemDistance.getConnectionId(ca.id, cb.id);
-      const { p, q } = itemDistance.connections[connectionId];
-      if (!(p.lineIndex in splits)) splits[p.lineIndex] = new Set<number>();
-      splits[p.lineIndex].add(p.sequenceIndex);
-      if (!(q.lineIndex in splits)) splits[q.lineIndex] = new Set<number>();
-      splits[q.lineIndex].add(q.sequenceIndex);
-      jumps.push({ p1: p.point, p2: q.point });
+    for (const { a, b } of jumps.edges) {
+      const ai = a.location.getGeometryComponent().getUserData();
+      const as = a.location.getSegmentIndex();
+      if (as > 0) {
+        if (!(ai in splits)) splits[ai] = new Set<number>();
+        splits[ai].add(as);
+      }
+      const bi = b.location.getGeometryComponent().getUserData();
+      const bs = b.location.getSegmentIndex();
+      if (bs > 0) {
+        if (!(bi in splits)) splits[bi] = new Set<number>();
+        splits[bi].add(bs);
+      }
     }
 
     // get the root node - add split if necessary
@@ -147,36 +96,31 @@ export class Redwork implements IRun {
     if (options?.entry) {
       const entryCoordinate = new Coordinate(options.entry.x, options.entry.y);
       const entryPoint = geometryFactory.createPoint(entryCoordinate);
-      const component = componentTree.nearestNeighbour(
+      const { geom } = jumps.componentTree.nearestNeighbour(
         entryPoint.getEnvelopeInternal(),
-        { geometry: entryPoint },
+        { geom: entryPoint },
         {
           distance(item1: ItemBoundable, item2: ItemBoundable) {
             if (item1 === item2) return Number.MAX_VALUE;
-            return item1.getItem().geometry.distance(item2.getItem().geometry);
+            return item1.getItem().geom.distance(item2.getItem().geom);
           },
         },
       );
-      const { point, lineIndex, sequenceIndex } = component.pointTree.nearestNeighbour(
-        entryPoint.getEnvelopeInternal(),
-        { point: entryPoint },
-        {
-          distance(item1: ItemBoundable, item2: ItemBoundable) {
-            if (item1 === item2) return Number.MAX_VALUE;
-            return item1.getItem().point.distance(item2.getItem().point);
-          },
-        },
-      );
-      if (lineIndex !== undefined && sequenceIndex !== undefined) {
+      const distanceOp = new DistanceOp(geom, entryPoint);
+      const [location, _] = distanceOp.nearestLocations();
+      const line = location.getGeometryComponent();
+      const lineIndex = line.getUserData();
+      const sequenceIndex = location.getSegmentIndex();
+      if (sequenceIndex > 0) {
         if (!(lineIndex in splits)) splits[lineIndex] = new Set<number>();
         splits[lineIndex].add(sequenceIndex);
       }
-      root = point.toString();
+      root = line.getPointN(sequenceIndex).toString();
     }
 
-    // build the new planar graph with split points and jumps
-    type pslgEdge = { type: 'STITCH' | 'JUMP'; line: LineString };
-    const pslg = new graphlib.Graph<null, null, pslgEdge>({ multigraph: true });
+    // prepare the route graph
+    type routeEdge = { type: 'STITCH' | 'JUMP'; line: LineString };
+    const routeGraph = new graphlib.Graph<null, null, routeEdge>({ multigraph: true });
     const toSubLine = (line: LineString, start: number, end: number) => {
       const coordinates = line.getCoordinates().slice(start, end + 1);
       return geometryFactory.createLineString(coordinates);
@@ -186,10 +130,10 @@ export class Redwork implements IRun {
       if (!(i in splits)) {
         const startNode = line.getStartPoint().toString();
         const endNode = line.getEndPoint().toString();
-        pslg.setNode(startNode);
-        pslg.setNode(endNode);
-        pslg.setEdge(startNode, endNode, { type: 'STITCH', line }, `${i},forward`);
-        pslg.setEdge(
+        routeGraph.setNode(startNode);
+        routeGraph.setNode(endNode);
+        routeGraph.setEdge(startNode, endNode, { type: 'STITCH', line }, `${i},forward`);
+        routeGraph.setEdge(
           endNode,
           startNode,
           { type: 'STITCH', line: line.reverse() },
@@ -201,16 +145,16 @@ export class Redwork implements IRun {
         let [startIndex, startNode] = [0, line.getPointN(0).toString()];
         for (const endIndex of splitIndices) {
           const endNode = line.getPointN(endIndex).toString();
-          pslg.setNode(startNode);
-          pslg.setNode(endNode);
+          routeGraph.setNode(startNode);
+          routeGraph.setNode(endNode);
           const subLine = toSubLine(line, startIndex, endIndex);
-          pslg.setEdge(
+          routeGraph.setEdge(
             startNode,
             endNode,
             { type: 'STITCH', line: subLine },
             `${i},forward`,
           );
-          pslg.setEdge(
+          routeGraph.setEdge(
             endNode,
             startNode,
             { type: 'STITCH', line: subLine.reverse() },
@@ -221,26 +165,42 @@ export class Redwork implements IRun {
       }
     }
 
-    // add the jumps
-    for (const { p1, p2 } of jumps) {
-      const [n1, n2] = [p1.toString(), p2.toString()];
-      const [c1, c2] = [p1.getCoordinate(), p2.getCoordinate()];
-      const forward = geometryFactory.createLineString([c1, c2]);
-      const backward = geometryFactory.createLineString([c2, c1]);
-      pslg.setEdge(n1, n2, { type: 'JUMP', line: forward }, 'forward');
-      pslg.setEdge(n2, n1, { type: 'JUMP', line: backward }, 'backward');
+    // add the jumps to the route graph
+    for (const { a, b } of jumps.edges) {
+      const pa = a.location
+        .getGeometryComponent()
+        .getPointN(a.location.getSegmentIndex());
+      const pb = b.location
+        .getGeometryComponent()
+        .getPointN(b.location.getSegmentIndex());
+      const ca = pa.getCoordinate();
+      const cb = pb.getCoordinate();
+      const forward = geometryFactory.createLineString([ca, cb]);
+      const backward = geometryFactory.createLineString([cb, ca]);
+      routeGraph.setEdge(
+        pa.toString(),
+        pb.toString(),
+        { type: 'JUMP', line: forward },
+        'forward',
+      );
+      routeGraph.setEdge(
+        pb.toString(),
+        pa.toString(),
+        { type: 'JUMP', line: backward },
+        'backward',
+      );
     }
 
     // build an eulerian circuit - Hierholzer's algorithm
     const edgeKey = (e: graphlib.Edge) => `${e.v},${e.w},${e.name ?? ''}`;
-    const unused = new Set(pslg.edges().map((e) => edgeKey(e)));
+    const unused = new Set(routeGraph.edges().map((e) => edgeKey(e)));
     const out = new Map<string, graphlib.Edge[]>();
-    for (const e of pslg.edges()) {
+    for (const e of routeGraph.edges()) {
       if (!out.has(e.v)) out.set(e.v, []);
       out.get(e.v)!.push(e);
     }
     const stack: { node: string; edge?: graphlib.Edge }[] = [{ node: root }];
-    const circuit: pslgEdge[] = [];
+    const circuit: routeEdge[] = [];
     while (stack.length) {
       const top = stack[stack.length - 1];
       const edges = out.get(top.node) ?? [];
@@ -255,7 +215,7 @@ export class Redwork implements IRun {
       if (e) stack.push({ node: e.w, edge: e });
       else {
         const popped = stack.pop()!;
-        if (popped.edge) circuit.push(pslg.edge(popped.edge));
+        if (popped.edge) circuit.push(routeGraph.edge(popped.edge));
       }
     }
     circuit.reverse();
