@@ -1,0 +1,148 @@
+<!doctype html>
+<html>
+<head>
+  <title>AutoFill Example</title>
+  <script src="../dist/stitch.global.js"></script>
+  <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
+  <script src="https://cdn.jsdelivr.net/npm/p5@2.2.2/lib/p5.js"></script>
+  <script src="https://unpkg.com/jsts@2.12.1/dist/jsts.min.js"></script>
+  <script src="https://unpkg.com/@matthewjacobson/ess"></script>
+</head>
+<body>
+<script type="module">
+
+  await Stitch.init();
+
+  const gf = new jsts.geom.GeometryFactory();
+  const Coordinate = jsts.geom.Coordinate;
+  const LineStringExtracter = jsts.geom.util.LineStringExtracter;
+  const scaleInstance = jsts.geom.util.AffineTransformation.scaleInstance;
+  const translationInstance = jsts.geom.util.AffineTransformation.translationInstance;
+  const map = Stitch.Math.Utils.map;
+  const noise = Stitch.Math.noise;
+  const Vector = Stitch.Math.Vector;
+
+  const svgPaths = [
+    ["M322.61 371.62C321.0723 371.6533 319.0829 372.4275 316.5162 373.87 311.5174 376.6795 310.1601 381.1549 311.0474 391.932 311.567 398.2436 311.3747 400.171 310.0162 402.244 308.6602 404.3135 308.4577 406.249 308.9537 412.682 309.2893 417.0341 310.1045 421.4662 310.7662 422.5258 311.7339 424.0753 311.6395 425.1352 310.2975 427.9633 308.2485 432.2812 308.226 433.7536 310.11 436.2445 310.9175 437.3121 311.5925 438.8299 311.61 439.6195 311.6275 440.4091 312.6016 442.0965 313.7975 443.3695 316.4055 446.1456 316.8712 446.1957 318.8287 443.932 321.9409 440.3333 322.7789 435.0297 323.2037 415.901 323.519 401.702 324.0128 395.868 325.0787 393.807 325.8874 392.243 326.6671 387.4388 326.8287 382.963 327.114 375.0582 325.9929 371.546 322.6099 371.619Z"],
+    ["M269.61 385.682C267.7019 385.682 262.751 388.6344 261.7975 390.3382 260.6542 392.3811 261.4037 404.1262 262.9225 408.1822 263.5404 409.8322 264.885 411.8054 265.9225 412.5572 267.0418 413.3683 267.6169 414.6741 267.3287 415.776 266.6375 418.4192 268.3068 425.0936 271.1725 431.151 272.5247 434.0093 274.087 438.7597 274.6413 441.682 275.1956 444.6046 276.8801 448.9582 278.3913 451.3695 280.7309 455.1026 281.5477 455.7042 284.0163 455.4633 287.7761 455.0964 289.5604 452.436 287.8601 449.7133 287.1766 448.6189 286.6413 446.5842 286.6413 445.2133S285.5389 439.4624 284.2038 435.4633 281.7792 426.3821 281.7976 424.1823C281.816 421.9823 281.3339 417.9323 280.7038 415.1823 279.6375 410.5284 276.6898 394.0703 276.6413 392.4633 276.606 391.2957 270.786 385.6821 269.6101 385.6821Z"],
+    ["M357.329 387.8695C353.8448 387.7878 350.1809 390.5186 348.6728 395.0883 347.6693 398.1289 346.632 409.7173 346.579 418.6823 346.5676 420.6073 346.0867 423.7236 345.4852 425.5885 344.8838 427.4534 344.437 430.9373 344.4852 433.3385 344.5552 436.8247 343.9767 438.3932 341.6102 441.0885 338.1231 445.0601 337.4996 450.9354 340.3914 452.6195 341.3539 453.1801 342.6524 453.6341 343.2976 453.6507 345.368 453.7044 350.6414 448.5697 350.6414 446.4945 350.6414 445.3907 351.2843 443.2981 352.0789 441.8383 354.7235 436.9798 359.7064 418.8073 359.0789 416.3073 358.7206 414.8797 359.181 412.5354 360.2039 410.5573 361.1537 408.7206 362.0666 405.6486 362.2351 403.7135 362.4037 401.7785 362.8386 398.3309 363.2039 396.0573 363.7534 392.6361 363.4864 391.5586 361.7351 389.8073 360.4515 388.5237 358.9126 387.9069 357.3289 387.8698Z"],
+    ["M396.291 427.6455C395.8801 426.3278 393.642 424.4628 393.642 424.4628 388.0198 425.0924 386.4684 425.9167 383.6732 429.7753 381.6402 432.5817 380.5492 435.5423 380.0794 439.4941 379.5749 443.7382 378.7161 445.9434 376.6419 448.1816 375.1128 449.8316 372.8191 453.2085 371.5794 455.6816S368.6732 460.6812 367.8606 461.2754C366.12 462.5482 361.6685 475.6164 362.3606 477.4314 363.2616 479.7945 366.4058 478.6914 369.7668 474.8064 371.6183 472.6662 374.2405 469.6287 375.6106 468.0564 379.6704 463.3974 386.6416 451.7744 386.6416 449.6504 386.6416 449.018 387.5416 447.3613 388.6416 445.9629S390.6416 442.6333 390.6416 441.6817C390.6416 439.4835 394.3721 437.0482 395.3836 434.3059 396.159 432.2038 397.0445 430.0635 396.2907 427.6457Z"],
+    [
+      "M288.891 461.5255C286.1903 461.4741 284.0218 461.8635 283.1098 462.7755 282.2091 463.6762 281.4449 467.2972 281.0786 472.3693 280.467 480.8366 281.7625 485.6023 285.4536 488.3073 286.7757 489.2759 286.5786 489.9398 283.8286 493.2761 282.0814 495.3958 280.1298 494.6463 278.3401 495.4879 275.6343 496.7603 274.0875 500.8349 273.8286 503.9637 273.6342 506.3129 272.6012 508.6286 271.0786 510.1512 269.7373 511.4925 268.6411 513.6936 268.6411 515.0262 268.6411 516.3589 267.9558 518.0063 267.1411 518.6824 265.64 519.9282 259.6509 519.6785 256.3911 518.2449 254.305 517.3275 252.6411 520.9174 252.6411 526.2761 252.6411 529.0464 253.6556 530.8136 257.9223 535.4323 275.6013 554.5703 282.0713 559.6823 288.5473 559.6823 290.1867 559.6823 291.761 560.106 292.0785 560.6198 292.396 561.1336 294.1136 561.3517 295.891 561.0886 301.6721 560.2326 318.892 558.7855 329.11 558.3074L339.11 557.8386 342.61 553.9011C344.544 551.7383 347.6341 547.5554 349.4538 544.5886 352.1704 540.1593 352.6732 538.4592 352.2663 535.1824 351.9207 532.3993 352.2328 530.6747 353.3288 529.4636 354.5261 528.1406 354.9562 525.0522 355.1413 516.4636 355.3064 508.8007 355.9132 503.9396 357.0163 501.3076 357.9088 499.1779 358.6551 496.4779 358.6725 495.3076 358.69 494.1373 359.365 492.3127 360.1725 491.2451 363.5218 486.8169 360.7804 482.6826 354.485 482.6826 351.3287 482.6826 349.5734 481.9287 346.3288 479.1514 344.0561 477.2061 341.0623 475.3319 339.6726 474.9952 338.2828 474.6585 336.2575 473.7694 335.1726 473.0264 334.0877 472.2835 332.5586 471.6826 331.7976 471.6826 331.0366 471.6826 328.7705 470.3901 326.7664 468.8076 322.4022 465.3616 314.0914 463.8212 309.6724 465.6514 307.3122 466.629 306.2638 466.545 303.4849 465.0889 299.3686 462.9321 293.3919 461.612 288.8909 461.5264Z",
+      "M303.297 495.3075C303.7283 495.3145 304.1967 495.4572 304.7345 495.745 307.0736 496.9968 319.6495 497.4221 321.4535 496.3075 323.7992 494.8578 324.0967 496.6804 322.1097 500.37 320.6083 503.1579 320.1482 506.0483 320.1097 513.089 320.0823 518.0968 319.7228 522.7452 319.2972 523.433 318.3689 524.9328 316.0014 525.0752 315.141 523.683 314.8011 523.133 313.2016 522.683 311.6098 522.683 309.6311 522.683 308.1506 521.8821 306.9223 520.1205 305.9342 518.7033 303.8506 516.1334 302.2661 514.433 299.5133 511.4788 299.3994 511.0431 299.9536 504.433 300.4946 497.9804 301.4286 495.276 303.2974 495.308Z",
+    ],
+    ["M215.516 479.4635C214.1278 479.3974 212.9799 479.6915 211.2348 480.3073 209.074 481.0697 208.4205 482.0324 207.5852 483.3875 206.6207 484.952 206.3602 487.2797 206.3009 488.75 206.2293 490.5269 206.9084 492.3945 207.9223 493.8698 210.4202 497.5045 212.6755 496.5166 218.2663 502.1198 222.9742 506.8384 227.5728 510.6823 228.5163 510.6823 229.4598 510.6823 231.7776 511.8073 233.6413 513.1824 237.6646 516.1507 240.5913 516.365 243.6723 513.8699 246.641 511.466 245.7732 507.802 241.6723 505.4949 239.167 504.0854 238.6411 503.1361 238.6411 500.1199 238.6411 491.8565 231.4998 483.9369 221.2031 480.7759 218.5321 479.9559 216.9037 479.5295 215.5156 479.4634Z"],
+  ];
+  function pathStringToPoints(pathString, spacing = 2) {
+    const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+    path.setAttribute("d", pathString);
+    const points = [];
+    const totalLength = path.getTotalLength();
+    for (let d = 0; d < totalLength; d += spacing) {
+      const { x, y } = path.getPointAtLength(d);
+      points.push({ x, y });
+    }
+    return points;
+  }
+  function fitBoxInsideBox(inner, outer) {
+    const iw = inner.xMax - inner.xMin;
+    const ih = inner.yMax - inner.yMin;
+    const ow = outer.xMax - outer.xMin;
+    const oh = outer.yMax - outer.yMin;
+    const s = Math.min(ow / iw, oh / ih);
+    const innerCx = (inner.xMin + inner.xMax) / 2;
+    const innerCy = (inner.yMin + inner.yMax) / 2;
+    const outerCx = (outer.xMin + outer.xMax) / 2;
+    const outerCy = (outer.yMin + outer.yMax) / 2;
+    const t = { x: outerCx - innerCx * s, y: outerCy - innerCy * s };
+    return { t, s };
+  }
+  function fitGeometryToScreen(geom) {
+    const bbScreen = {
+      xMin: 0.05 * width, yMin: 0.05 * height,
+      xMax: 0.95 * width, yMax: 0.95 * height,
+    };
+    const env = geom.getEnvelopeInternal();
+    const bbSvg = {
+      xMin: env.getMinX(), yMin: env.getMinY(),
+      xMax: env.getMaxX(), yMax: env.getMaxY(),
+    };
+    const { t, s } = fitBoxInsideBox(bbSvg, bbScreen);
+    return scaleInstance(s, s)
+      .compose(translationInstance(t.x, t.y))
+      .transform(geom);
+  }
+
+  const [width, height] = [800, 800];
+
+  const polygons = [];
+  for (const svgPath of svgPaths) {
+    const rings = [];
+    for (let s of svgPath) {
+      const path = pathStringToPoints(s).map(p => new Coordinate(p.x, p.y));
+      rings.push(gf.createLinearRing([...path, path[0]]));
+    }
+    polygons.push(gf.createPolygon(rings[0], rings.slice(1)));
+  }
+  const mask = fitGeometryToScreen(gf.createMultiPolygon(polygons));
+
+  const dSep = 10;
+  const offset = { x: 10000 * Math.random() + 1000, y: 10000 * Math.random() + 1000 };
+  const essLines = [];
+  const handle = streamlines.computeStreamlines({
+    vectorField: (x, y) => {
+      const angle = map(noise((x + offset.x) / 400, (y + offset.y) / 400), 0, 1, 0, 2 * Math.PI);
+      const out = new Vector(x, y).rotate(angle);
+      return { x: out.x, y: out.y };
+    },
+    boundingBox: { left: 0, top: 0, width, height },
+    dSep: dSep,
+    dTest: 0.5 * dSep,
+    timeStep: 0.5,
+    onStreamlineAdded(s) {
+      const line = gf.createLineString(s.points.map(p => new Coordinate(p.x, p.y)));
+      essLines.push(line);
+    }
+  });
+  await handle.done;
+  const maskedEssLines = mask.intersection(gf.createMultiLineString(essLines));
+
+  const pattern = new Stitch.Core.Pattern(width, height);
+  const thread = pattern.addThread(0, 0, 0);
+
+  thread.addRun(new Stitch.Core.Runs.Redwork(
+    [
+      ...LineStringExtracter.getLines(maskedEssLines).toArray().map(l => l.getCoordinates().map(c => new Vector(c.x, c.y))),
+      ...LineStringExtracter.getLines(mask.getBoundary()).toArray().map(l => l.getCoordinates().map(c => new Vector(c.x, c.y)))
+    ],
+    {
+      entry: new Vector(0, 0),
+      stitchLengthMm: 3,
+      stitchToleranceMm: 0.1,
+    }
+  ));
+
+
+  let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
+  canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+  document.body.append(canvas);
+
+  let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'redWorkHandStreamlines', 10, 500);
+  document.body.appendChild(modal.container);
+  window.addEventListener('click', (e) => {
+    if (e.target === modal.container) modal.close();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyD') modal.open();
+  });
+
+  window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
+    canvas.remove();
+    canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
+    canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+    document.body.append(canvas);
+  }, 10));
+
+</script>
+</body>
+</html>

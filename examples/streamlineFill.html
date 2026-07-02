@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Basic Example</title>
+  <script src="../dist/stitch.global.js"></script>
+  <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
+</head>
+
+<body>
+<script>
+  let pattern = new Stitch.Core.Pattern(800, 800);
+  let thread = pattern.addThread(0, 0, 0);
+  thread.addRun(new Stitch.Core.Runs.StreamlineFill([
+    {
+      shell: [
+        new Stitch.Math.Vector(50, 50), new Stitch.Math.Vector(350, 50),
+        new Stitch.Math.Vector(350, 350), new Stitch.Math.Vector(50, 350),
+        new Stitch.Math.Vector(50, 50),
+      ]
+    },
+    {
+      shell: [
+        new Stitch.Math.Vector(450, 50), new Stitch.Math.Vector(750, 50),
+        new Stitch.Math.Vector(750, 350), new Stitch.Math.Vector(450, 350),
+        new Stitch.Math.Vector(450, 50),
+      ]
+    },
+    {
+      shell: [
+        new Stitch.Math.Vector(50, 450), new Stitch.Math.Vector(350, 450),
+        new Stitch.Math.Vector(350, 750), new Stitch.Math.Vector(50, 750),
+        new Stitch.Math.Vector(50, 450),
+      ]
+    },
+    {
+      shell: [
+        new Stitch.Math.Vector(450, 450), new Stitch.Math.Vector(750, 450),
+        new Stitch.Math.Vector(750, 750), new Stitch.Math.Vector(450, 750),
+        new Stitch.Math.Vector(450, 450),
+      ]
+    },
+  ], {
+    separationMm: 3,
+  }));
+
+  let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
+  canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+  document.body.append(canvas);
+
+  let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'redWorkHandStreamlines', 10, 500);
+  document.body.appendChild(modal.container);
+  window.addEventListener('click', (e) => {
+    if (e.target === modal.container) modal.close();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyD') modal.open();
+  });
+
+  window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
+    canvas.remove();
+    canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
+    canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+    document.body.append(canvas);
+  }, 10));
+</script>
+</body>
+
+</html>

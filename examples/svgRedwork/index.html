@@ -5,77 +5,83 @@
   <script src="../../dist/stitch.global.js"></script>
   <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
   <script src="https://cdn.jsdelivr.net/npm/p5@2.2.2/lib/p5.js"></script>
+  <script src="https://unpkg.com/svg2wkt"></script>
+  <script src="https://unpkg.com/jsts@2.12.1/dist/jsts.min.js"></script>
 </head>
-<body>
+<body style="margin: 0;">
 <script>
 
-  let redwork, stitches;
+  // const [file, includeBorder, density] = ['./GreatScott.svg', false, 0.25];
+  // const [file, includeBorder, density] = ['./Maze.svg', false, 0.25];
+  // const [file, includeBorder, density] = ['./torus.txt', true, 0.25];
+  const [file, includeBorder, density] = ['./Sugar_Skull.txt', false, 2];
+  // const [file, includeBorder, density] = ['./firebird.txt', false, 0.25];
+  // const [file, includeBorder, density] = ['./sparrow.txt', false, 0.1];
+
+  function fitGeometryInsideScreen(g) {
+    const envelope = g.getEnvelopeInternal();
+    const s = Math.min(width / envelope.getWidth(), height / envelope.getHeight());
+    const tx = width / 2 - ((envelope.getMinX() + envelope.getMaxX()) / 2) * s;
+    const ty = height / 2 - ((envelope.getMinY() + envelope.getMaxY()) / 2) * s;
+    return jsts.geom.util.AffineTransformation.scaleInstance(s, s).compose(
+      jsts.geom.util.AffineTransformation.translationInstance(tx, ty)
+    ).transform(g);
+  }
+
+  const reader = new jsts.io.WKTReader();
+  let geometry, pattern, run, stitches;
   async function setup() {
-    // const svgStrings = await loadStrings('./GreatScott.svg');
-    // const viewbox = [0, 0, 745, 1053];
-    // const scale = 1;
-    const svgStrings = await loadStrings('./Maze.svg');
-    const viewbox = [-70.5, -12.1, 141, 90.2];
-    const scale = 6;
-    createCanvas(scale * viewbox[2], scale * viewbox[3]);
+    createCanvas(window.innerWidth, window.innerHeight);
     await Stitch.init();
-    let svgDoc = (new DOMParser()).parseFromString(svgStrings.join('\n'), 'image/svg+xml');
-    const lines = [];
-    for (let path of svgDoc.querySelectorAll('path')) {
-      const length = path.getTotalLength();
-      if (length > 5) {
-        const steps = length / 2;
-        const line = [];
-        for (let i = 0; i <= steps; i++) {
-          const p = path.getPointAtLength(map(i, 0, steps, 0, length));
-          const x = Stitch.Math.Utils.map(p.x, viewbox[0], viewbox[0] + viewbox[2], 0, scale * viewbox[2]);
-          const y = Stitch.Math.Utils.map(p.y, viewbox[1], viewbox[1] + viewbox[3], 0, scale * viewbox[3]);
-          line.push(new Stitch.Math.Vector(x, y));
-        }
-        lines.push(line);
-      }
+    const svgStrings = await loadStrings(file);
+    geometry = fitGeometryInsideScreen(reader.read(svg2wkt.svgToWkt(svgStrings.join('\n'), { flipY: false, density })));
+    const lines = jsts.geom.util.LinearComponentExtracter.getLines(geometry).toArray()
+      .map(l => l.getCoordinates().map(c => new Stitch.Math.Vector(c.x, c.y)));
+    if (includeBorder) {
+      lines.push(geometry.getEnvelope().getExteriorRing().getCoordinates().map(c => new Stitch.Math.Vector(c.x, c.y)));
     }
-    redwork = new Stitch.Core.Runs.Redwork(lines);
-    stitches = redwork.getStitches(3);
+    run = new Stitch.Core.Runs.Redwork(lines, {
+      entry: new Stitch.Math.Vector(300, 0),
+      stitchLengthMm: 3,
+      stitchToleranceMm: 0.1,
+      densifyDistancePx: 10,
+      precisionModelScale: 10,
+    });
+    pattern = new Stitch.Core.Pattern(width, height);
+    const thread = pattern.addThread(0, 0, 0);
+    thread.addRun(run);
+
+    let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'redWorkHandStreamlines', 10, 500);
+    document.body.appendChild(modal.container);
+    window.addEventListener('click', (e) => {
+      if (e.target === modal.container) modal.close();
+    });
+    window.addEventListener('keydown', (e) => {
+      if (e.code === 'KeyD') modal.open();
+    });
+
+    stitches = run.getStitches(5);
   }
 
   async function draw() {
     background(0);
 
     noFill();
-    // stroke(255, 50);
-    // drawGeom(redwork.line);
-    // for (let edgeId of redwork.graph.edges()) {
-    //   const edge = redwork.graph.edge(edgeId);
-    //   drawGeom(edge);
-    // }
+    stroke(255, 0, 0, 200);
+    drawGeom(geometry);
 
-    // stroke(255, 0, 0);
-    // for (let line of redwork.nodedGeoms) {
-    //   noFill();
-    //   drawGeom(line);
-    // }
-
-    // stroke(0, 255, 255);
-    // for (let line of redwork.jumps) {
-    //   noFill();
-    //   drawGeom(line);
-    // }
-
-    if (stitches) {
-      const stitchLimit = Math.round(map(mouseX, 0, width, 0, stitches.length, true));
+    if (stitches && stitches.length > 0) {
+      const stitchLimit = Math.round(map(mouseX, 50, width - 50, 0, stitches.length, true));
       noFill();
+      stroke(255);
       let prev = stitches[0].position;
       for (let i = 1; i < stitchLimit; i++) {
-        stroke(map(i, max(stitchLimit - 50, 1), stitchLimit, 255, 0), 150);
         const offset = map(i, 1, stitches.length, 0, 0);
         const curr = stitches[i].position;
         line(prev.x, prev.y + offset, curr.x, curr.y + offset);
         prev = curr;
       }
     }
-
-
   }
 
   function drawGeom(g) {

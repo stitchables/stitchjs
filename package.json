@@ -23,6 +23,7 @@
   },
   "dependencies": {
     "@dagrejs/graphlib": "^4.0.1",
+    "@matthewjacobson/ess": "^0.2.0",
     "@matthewjacobson/str8": "^0.2.0",
     "edmonds-blossom": "^1.0.0",
     "graphlib": "^2.1.8",

@@ -1,249 +1,262 @@
 import { IRun } from '../IRun';
 import { Vector } from '../../Math/Vector';
 import {
-  PrecisionModel,
   Coordinate,
-  Point,
   LineString,
-  LinearRing,
+  MultiLineString,
+  PrecisionModel,
 } from 'jsts/org/locationtech/jts/geom';
 import GeometryNoder from 'jsts/org/locationtech/jts/noding/snapround/GeometryNoder';
 import ItemBoundable from 'jsts/org/locationtech/jts/index/strtree/ItemBoundable';
-import ItemDistance from 'jsts/org/locationtech/jts/index/strtree/ItemDistance';
-import { STRtree } from 'jsts/org/locationtech/jts/index/strtree';
-import GeometryItemDistance from 'jsts/org/locationtech/jts/index/strtree/GeometryItemDistance';
-import FacetSequenceTreeBuilder from 'jsts/org/locationtech/jts/operation/distance/FacetSequenceTreeBuilder';
-import ArrayList from 'jsts/java/util/ArrayList';
+import LineMergeGraph from 'jsts/org/locationtech/jts/operation/linemerge/LineMergeGraph';
+import ConnectedSubgraphFinder from 'jsts/org/locationtech/jts/planargraph/algorithm/ConnectedSubgraphFinder';
+import Densifier from 'jsts/org/locationtech/jts/densify/Densifier';
+import DistanceOp from 'jsts/org/locationtech/jts/operation/distance/DistanceOp';
+import Arrays from 'jsts/java/util/Arrays';
 import { Stitch } from '../Stitch';
 import * as graphlib from '@dagrejs/graphlib';
 import { geometryFactory } from '../../util/jsts';
-import DisjointSet from '../../Optimize/DisjointSet';
-import { Run } from './Run';
-
-type EndPointNode = Point;
-type JumpNode = { p: Point; q: Point };
-type Node = EndPointNode | JumpNode;
-type Edge = LineString | LinearRing;
+import { resample } from '../../Geometry/resample';
+import { StitchType } from '../EStitchType';
+import { geometryMst } from '../../Geometry/geometryMst';
 
 export class Redwork implements IRun {
   stitchLengthMm: number;
   stitchToleranceMm: number;
-  graph: graphlib.Graph<null, Node, Edge>;
-  nodedGeoms: LineString[];
-  jumps: LineString[];
-  line: LineString;
+  route: { type: 'STITCH' | 'JUMP'; line: LineString }[];
   constructor(
     lines: Vector[][],
     options?: {
+      entry?: Vector;
       stitchLengthMm?: number;
       stitchToleranceMm?: number;
+      densifyDistancePx?: number;
+      precisionModelScale?: number;
     },
   ) {
     this.stitchLengthMm = options?.stitchLengthMm ?? 3;
-    this.stitchToleranceMm = options?.stitchToleranceMm ?? 1;
-    this.graph = new graphlib.Graph<null, Node, LineString>();
-    this.jumps = [];
+    this.stitchToleranceMm = options?.stitchToleranceMm ?? 0.1;
 
-    const geometries = new ArrayList(0);
-    for (const line of lines) {
-      const coords = line.map((v) => new Coordinate(v.x, v.y));
-      geometries.add(geometryFactory.createLineString(coords));
+    // densify the original line work to ensure there are always "close" jumping points
+    const toCoord = (v: Vector) => new Coordinate(v.x, v.y);
+    const toLineString = (vs: Vector[]) => {
+      return geometryFactory.createLineString(vs.map(toCoord));
+    };
+    const denseLines = lines.map((l) => {
+      return Densifier.densify(toLineString(l), options?.densifyDistancePx || 10);
+    });
+
+    // node the original lines - splits lines where they intersect
+    const precisionModel = new PrecisionModel(options?.precisionModelScale || 10);
+    const geometryNoder = new GeometryNoder(precisionModel);
+    const nodeLines = geometryNoder.node(Arrays.asList(denseLines));
+
+    // create a graph from the nodelines - set the user data for lookup later
+    const lineMergeGraph = new LineMergeGraph();
+    for (let i = 0, it = nodeLines.iterator(); it.hasNext(); i++) {
+      const nodeLine = it.next();
+      nodeLine.setUserData(i);
+      lineMergeGraph.addEdge(nodeLine);
     }
 
-    const geometryNoder = new GeometryNoder(new PrecisionModel(10));
-    this.nodedGeoms = geometryNoder.node(geometries).toArray();
-    const nodedLines = geometryNoder.node(geometries).toArray();
-
-    for (const nodedLine of nodedLines) {
-      const startPoint = nodedLine.getStartPoint();
-      this.graph.setNode(startPoint.toString(), startPoint);
-      const endPoint = nodedLine.getEndPoint();
-      this.graph.setNode(endPoint.toString(), startPoint);
-      this.graph.setEdge(startPoint.toString(), endPoint.toString(), nodedLine);
-      this.graph.setEdge(endPoint.toString(), startPoint.toString(), nodedLine.reverse());
+    // find the connected components
+    const geometryComponents: MultiLineString[] = [];
+    const componentFinder = new ConnectedSubgraphFinder(lineMergeGraph);
+    const components = componentFinder.getConnectedSubgraphs();
+    for (let it = components.iterator(); it.hasNext(); ) {
+      const lineComponents = [];
+      for (let jt = it.next().edgeIterator(); jt.hasNext(); ) {
+        lineComponents.push(jt.next().getLine());
+      }
+      geometryComponents.push(geometryFactory.createMultiLineString(lineComponents));
     }
 
-    const adj = new Map<string, string[]>();
-    for (const node of this.graph.nodes()) {
-      adj.set(node, this.graph.neighbors(node) ?? []);
-    }
-    const coordinates = [];
-    const circuit = printCircuit(adj);
-    for (let i = 1; i < circuit.length; i++) {
-      const line = this.graph.edge(circuit[i - 1], circuit[i]);
-      const coords = line.getCoordinates();
-      for (let j = 0; j < coords.length - 1; j++) {
-        coordinates.push(coords[j]);
+    // calculate the minimum jumps necessary to connect all components
+    const jumps = geometryMst(geometryComponents);
+
+    // collect the split points created by the jumps
+    const splits: Record<number, Set<number>> = [];
+    for (const { a, b } of jumps.edges) {
+      const ai = a.location.getGeometryComponent().getUserData();
+      const as = a.location.getSegmentIndex();
+      if (as > 0) {
+        if (!(ai in splits)) splits[ai] = new Set<number>();
+        splits[ai].add(as);
+      }
+      const bi = b.location.getGeometryComponent().getUserData();
+      const bs = b.location.getSegmentIndex();
+      if (bs > 0) {
+        if (!(bi in splits)) splits[bi] = new Set<number>();
+        splits[bi].add(bs);
       }
     }
-    this.line = geometryFactory.createLineString(coordinates);
 
-    // const componentGraph = new graphlib.Graph<null, Point, LineString>({
-    //   directed: false,
-    //   multigraph: true,
-    // });
-    // for (let i = 0; i < nodedLines.length; i++) {
-    //   const startPoint = nodedLines[i].getStartPoint();
-    //   const endPoint = nodedLines[i].getEndPoint();
-    //   componentGraph.setNode(startPoint.toString(), startPoint);
-    //   componentGraph.setNode(endPoint.toString(), endPoint);
-    //   componentGraph.setEdge(startPoint.toString(), endPoint.toString(), nodedLines[i]);
-    // }
-    //
-    // const components = graphlib.alg.components(componentGraph);
-    // const componentTree = new STRtree(3);
-    // for (let i = 0; i < components.length; i++) {
-    //   const nodes = new Set(components[i]);
-    //   const edges = [];
-    //   const edgeTree = new STRtree();
-    //   for (const edge of componentGraph.edges()) {
-    //     if (nodes.has(edge.v) && nodes.has(edge.w)) {
-    //       edges.push(componentGraph.edge(edge));
-    //       const line = componentGraph.edge(edge);
-    //       for (let j = 1; j < line.getNumPoints(); j++) {}
-    //     }
-    //   }
-    //   const geometry = geometryFactory.createMultiLineString(edges);
-    //   const tree = FacetSequenceTreeBuilder.build(geometry);
-    //   componentTree.insert(geometry.getEnvelopeInternal(), {
-    //     id: i.toString(),
-    //     geometry,
-    //     tree,
-    //   });
-    // }
-    // componentTree.build();
-    //
-    // const disjointItemDistance = new DisjointSetItemDistance(
-    //   Array.from({ length: components.length }, (_, i) => i.toString()),
-    // );
-    // while (!disjointItemDistance.disjointSet.isFullyConnected()) {
-    //   const [p, q] = componentTree.nearestNeighbour(disjointItemDistance);
-    //   disjointItemDistance.disjointSet.union(p.id, q.id);
-    //   console.log(p, q);
-    //   const [s, t] = p.tree.nearestNeighbour(q.tree, geomItemDist);
-    //   const [sLoc, tLoc] = s.nearestLocations(t);
-    //   this.jumps.push(geometryFactory.createLineString([sLoc.getCoordinate(), tLoc.getCoordinate()]));
-    // }
+    // get the root node - add split if necessary
+    let root = nodeLines.iterator().next().getStartPoint().toString();
+    if (options?.entry) {
+      const entryCoordinate = new Coordinate(options.entry.x, options.entry.y);
+      const entryPoint = geometryFactory.createPoint(entryCoordinate);
+      const { geom } = jumps.componentTree.nearestNeighbour(
+        entryPoint.getEnvelopeInternal(),
+        { geom: entryPoint },
+        {
+          distance(item1: ItemBoundable, item2: ItemBoundable) {
+            if (item1 === item2) return Number.MAX_VALUE;
+            return item1.getItem().geom.distance(item2.getItem().geom);
+          },
+        },
+      );
+      const distanceOp = new DistanceOp(geom, entryPoint);
+      const [location, _] = distanceOp.nearestLocations();
+      const line = location.getGeometryComponent();
+      const lineIndex = line.getUserData();
+      const sequenceIndex = location.getSegmentIndex();
+      if (sequenceIndex > 0) {
+        if (!(lineIndex in splits)) splits[lineIndex] = new Set<number>();
+        splits[lineIndex].add(sequenceIndex);
+      }
+      root = line.getPointN(sequenceIndex).toString();
+    }
 
-    // for (const component of components) {
-    //   // const parent = component.pop()!;
-    //   // for (const node of component) {
-    //   //   itemDistance.disjointSet.union(parent, node);
-    //   // }
-    //   const componentEdges = new Set<string>();
-    //   for (let )
-    //   componentTree.insert(nodedLine.getEnvelopeInternal(), {
-    //     id: `${startPoint.toString()}`,
-    //     edge: { v: startPoint.toString(), w: endPoint.toString() },
-    //     geometry: nodedLine,
-    //   });
-    // }
-    // lineTree.build();
-    //
-    // const jumps = new Map<string, { location: GeometryLocation, index: number }[]>;
-    // let count = 0;
-    // while (!itemDistance.disjointSet.isFullyConnected()) {
-    //   const [p, q] = lineTree.nearestNeighbour(itemDistance);
-    //   itemDistance.disjointSet.union(p.id, q.id);
-    //   const [pLoc, qLoc] = (new DistanceOp(p.geometry, q.geometry)).nearestLocations();
-    //   this.jumps.push(geometryFactory.createLineString([pLoc.getCoordinate(), qLoc.getCoordinate()]));
-    //   console.log(count, pLoc.getCoordinate().distance(qLoc.getCoordinate()), pLoc, qLoc);
-    //
-    //   // if (jumps.has(JSON.stringify(p.edge))) {
-    //   //   const locations = jumps.get(JSON.stringify(p.edge))!;
-    //   //   locations.push(pLoc);
-    //   //   jumps.set(JSON.stringify(p.edge), locations);
-    //   // } else {
-    //   //   jumps.set(JSON.stringify(p.edge), [pLoc]);
-    //   // }
-    //   // if (jumps.has(JSON.stringify(q.edge))) {
-    //   //   const locations = jumps.get(JSON.stringify(q.edge))!;
-    //   //   locations.push(qLoc);
-    //   //   jumps.set(JSON.stringify(q.edge), locations);
-    //   // } else {
-    //   //   jumps.set(JSON.stringify(q.edge), [qLoc]);
-    //   // }
-    //
-    //   // jumps.push({
-    //   //   p: { edge: p.edge, location: pLoc },
-    //   //   q: { edge: q.edge, location: qLoc },
-    //   //   // geometryFactory.createLineString([pCoord, qCoord])
-    //   // });
-    //   count++;
-    // }
-    //
-    // console.log(jumps);
+    // prepare the route graph
+    type routeEdge = { type: 'STITCH' | 'JUMP'; line: LineString };
+    const routeGraph = new graphlib.Graph<null, null, routeEdge>({ multigraph: true });
+    const toSubLine = (line: LineString, start: number, end: number) => {
+      const coordinates = line.getCoordinates().slice(start, end + 1);
+      return geometryFactory.createLineString(coordinates);
+    };
+    for (let i = 0, it = nodeLines.iterator(); it.hasNext(); i++) {
+      const line = it.next();
+      if (!(i in splits)) {
+        const startNode = line.getStartPoint().toString();
+        const endNode = line.getEndPoint().toString();
+        routeGraph.setNode(startNode);
+        routeGraph.setNode(endNode);
+        routeGraph.setEdge(startNode, endNode, { type: 'STITCH', line }, `${i},forward`);
+        routeGraph.setEdge(
+          endNode,
+          startNode,
+          { type: 'STITCH', line: line.reverse() },
+          `${i},backward`,
+        );
+      } else {
+        const splitIndices = [...splits[i]].sort((a, b) => a - b);
+        splitIndices.push(line.getNumPoints() - 1);
+        let [startIndex, startNode] = [0, line.getPointN(0).toString()];
+        for (const endIndex of splitIndices) {
+          const endNode = line.getPointN(endIndex).toString();
+          routeGraph.setNode(startNode);
+          routeGraph.setNode(endNode);
+          const subLine = toSubLine(line, startIndex, endIndex);
+          routeGraph.setEdge(
+            startNode,
+            endNode,
+            { type: 'STITCH', line: subLine },
+            `${i},forward`,
+          );
+          routeGraph.setEdge(
+            endNode,
+            startNode,
+            { type: 'STITCH', line: subLine.reverse() },
+            `${i},backward`,
+          );
+          [startIndex, startNode] = [endIndex, endNode];
+        }
+      }
+    }
+
+    // add the jumps to the route graph
+    for (const { a, b } of jumps.edges) {
+      const pa = a.location
+        .getGeometryComponent()
+        .getPointN(a.location.getSegmentIndex());
+      const pb = b.location
+        .getGeometryComponent()
+        .getPointN(b.location.getSegmentIndex());
+      const ca = pa.getCoordinate();
+      const cb = pb.getCoordinate();
+      const forward = geometryFactory.createLineString([ca, cb]);
+      const backward = geometryFactory.createLineString([cb, ca]);
+      routeGraph.setEdge(
+        pa.toString(),
+        pb.toString(),
+        { type: 'JUMP', line: forward },
+        'forward',
+      );
+      routeGraph.setEdge(
+        pb.toString(),
+        pa.toString(),
+        { type: 'JUMP', line: backward },
+        'backward',
+      );
+    }
+
+    // build an eulerian circuit - Hierholzer's algorithm
+    const edgeKey = (e: graphlib.Edge) => `${e.v},${e.w},${e.name ?? ''}`;
+    const unused = new Set(routeGraph.edges().map((e) => edgeKey(e)));
+    const out = new Map<string, graphlib.Edge[]>();
+    for (const e of routeGraph.edges()) {
+      if (!out.has(e.v)) out.set(e.v, []);
+      out.get(e.v)!.push(e);
+    }
+    const stack: { node: string; edge?: graphlib.Edge }[] = [{ node: root }];
+    const circuit: routeEdge[] = [];
+    while (stack.length) {
+      const top = stack[stack.length - 1];
+      const edges = out.get(top.node) ?? [];
+      let e: graphlib.Edge | undefined;
+      while (edges.length) {
+        const candidate = edges.pop()!;
+        if (unused.delete(edgeKey(candidate))) {
+          e = candidate;
+          break;
+        }
+      }
+      if (e) stack.push({ node: e.w, edge: e });
+      else {
+        const popped = stack.pop()!;
+        if (popped.edge) circuit.push(routeGraph.edge(popped.edge));
+      }
+    }
+    circuit.reverse();
+
+    // compose the final route - combining consecutive stitch lines
+    this.route = [];
+    let run = [];
+    for (const { type, line } of circuit) {
+      if (type === 'JUMP') {
+        if (run.length > 1)
+          this.route.push({
+            type: 'STITCH',
+            line: geometryFactory.createLineString(run),
+          });
+        run = [];
+        this.route.push({ type, line });
+      } else {
+        run.push(...line.getCoordinates().slice(0, -1));
+      }
+    }
+    if (run.length > 1) {
+      this.route.push({ type: 'STITCH', line: geometryFactory.createLineString(run) });
+    }
   }
 
   getStitches(pixelsPerMm: number): Stitch[] {
-    const run = new Run(
-      this.line.getCoordinates().map((c: Coordinate) => new Vector(c.x, c.y)),
-      { stitchToleranceMm: 0.1 },
-    );
-    return run.getStitches(pixelsPerMm);
-  }
-}
-
-const geomItemDist = new GeometryItemDistance();
-class DisjointSetItemDistance {
-  disjointSet: DisjointSet;
-  constructor(nodeIds: string[]) {
-    this.disjointSet = new DisjointSet(nodeIds);
-  }
-  distance(item1: ItemBoundable, item2: ItemBoundable) {
-    if (item1 === item2) return Number.MAX_VALUE;
-    // check if they are in the same connected component
-    const item1Parent = this.disjointSet.find(item1.getItem().id);
-    const item2Parent = this.disjointSet.find(item2.getItem().id);
-    if (item1Parent === item2Parent) return Number.MAX_VALUE;
-    // return item1.getItem().geometry.distance(item2.getItem().geometry);
-    const [p, q] = item1
-      .getItem()
-      .tree.nearestNeighbour(item2.getItem().tree, geomItemDist);
-    return p.distance(q);
-  }
-  get interfaces_() {
-    return [ItemDistance];
-  }
-}
-
-function printCircuit(adj: Map<string, string[]>): string[] {
-  if (adj.size === 0) return [];
-
-  // Maintain a stack to keep vertices
-  // We can start from any vertex, here we start with 0
-  let currPath = [adj.keys().next().value!];
-
-  // list to store final circuit
-  let circuit = [];
-
-  while (currPath.length > 0) {
-    let currNode = currPath[currPath.length - 1];
-
-    const neighbors = adj.get(currNode)!;
-    // If there's remaining edge in adjacency list
-    // of the current vertex
-    if (neighbors.length > 0) {
-      // Find and remove the next vertex that is
-      // adjacent to the current vertex
-      let nextNode = neighbors.pop()!;
-
-      // Push the new vertex to the stack
-      currPath.push(nextNode);
-
-      adj.set(currNode, neighbors);
+    const lengthPx = this.stitchLengthMm * pixelsPerMm;
+    const tolerancePx = this.stitchToleranceMm * pixelsPerMm;
+    const stitches = [];
+    for (const { type, line } of this.route) {
+      if (type === 'STITCH') {
+        const resampled = resample(line, lengthPx, tolerancePx);
+        for (const c of resampled.getCoordinates()) {
+          stitches.push(new Stitch(new Vector(c.x, c.y), StitchType.NORMAL));
+        }
+      } else {
+        for (const c of line.getCoordinates()) {
+          stitches.push(new Stitch(new Vector(c.x, c.y), StitchType.JUMP));
+        }
+      }
     }
-
-    // back-track to find remaining circuit
-    else {
-      // Remove the current vertex and
-      // put it in the circuit
-      circuit.push(currPath.pop()!);
-    }
+    return stitches;
   }
-
-  // reverse the result vector
-  circuit.reverse();
-
-  return circuit;
 }

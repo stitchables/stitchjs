@@ -23,6 +23,12 @@ interface UnderlayOptions {
   sideInsetMm?: number;
 }
 
+export interface SatinSplitOptions {
+  maxWidthMm: number;
+  staggerCycles?: number;
+  staggerAmountMm?: number;
+}
+
 interface SatinLineData {
   line: LineString;
   len: number;
@@ -38,6 +44,7 @@ export class ClassicSatin implements IRun {
   densityMm: number;
   travelLengthMm: number;
   travelToleranceMm: number;
+  split: SatinSplitOptions | undefined;
   underlays: { type: string; options?: UnderlayOptions }[];
   lineData: { left: SatinLineData; right: SatinLineData; center: SatinLineData };
   isClosed: boolean;
@@ -50,6 +57,7 @@ export class ClassicSatin implements IRun {
       densityMm?: number;
       travelLengthMm?: number;
       travelToleranceMm?: number;
+      split?: SatinSplitOptions;
       underlays?: { type: string; options?: UnderlayOptions }[];
     },
   ) {
@@ -66,6 +74,7 @@ export class ClassicSatin implements IRun {
     this.densityMm = options?.densityMm ?? 0.4;
     this.travelLengthMm = options?.travelLengthMm ?? 3;
     this.travelToleranceMm = options?.travelToleranceMm ?? 1;
+    this.split = options?.split;
     this.underlays = options?.underlays ?? [];
   }
 
@@ -287,17 +296,99 @@ export class ClassicSatin implements IRun {
   getFullSatin(pixelsPerMm: number): LineString {
     const countCrosses =
       Math.round(this.lineData.center.len / (this.densityMm * pixelsPerMm)) + 1;
-    const coords: Coordinate[] = [];
+    const rawCoords: Coordinate[] = [];
     for (let i = 0; i < (this.isClosed ? countCrosses : countCrosses + 1); i++) {
       const locationIndex = this.lineData.center.lenLocMap.getLocation(
         (i / countCrosses) * this.lineData.center.len,
       );
       const left: Coordinate = this.lineData.left.locIndex.extractPoint(locationIndex);
       const right: Coordinate = this.lineData.right.locIndex.extractPoint(locationIndex);
-      coords.push(left);
-      coords.push(right);
+      rawCoords.push(left);
+      rawCoords.push(right);
     }
-    return geometryFactory.createLineString(coords);
+
+    if (this.split === undefined || this.split.maxWidthMm <= 0) {
+      return geometryFactory.createLineString(rawCoords);
+    }
+
+    const splitPx = this.split.maxWidthMm * pixelsPerMm;
+    const finalCoords: Coordinate[] = [rawCoords[0]];
+    for (let i = 1; i < rawCoords.length; i++) {
+      const crossIdx = i % 2 === 1 ? (i - 1) / 2 : undefined;
+      const segment = { a: rawCoords[i - 1], b: rawCoords[i] };
+      for (const coord of this.splitSegment(
+        segment,
+        this.split,
+        splitPx,
+        crossIdx,
+        pixelsPerMm,
+      )) {
+        finalCoords.push(coord);
+      }
+    }
+    return geometryFactory.createLineString(finalCoords);
+  }
+
+  splitSegment(
+    segment: { a: Coordinate; b: Coordinate },
+    split: SatinSplitOptions,
+    splitPx: number,
+    crossIdx: number | undefined,
+    pixelsPerMm: number,
+  ): Coordinate[] {
+    const { a, b } = segment;
+    const dist = a.distance(b);
+    if (dist <= splitPx) {
+      return [b];
+    }
+
+    const staggerCycles = split.staggerCycles;
+    const staggerEnabled = staggerCycles !== undefined && staggerCycles > 1;
+    if (staggerEnabled && crossIdx === undefined) {
+      return [b];
+    }
+
+    const numSegments = Math.ceil(dist / splitPx);
+    const rowShift =
+      staggerEnabled && crossIdx !== undefined
+        ? this.getStaggerRowShift(
+            crossIdx,
+            staggerCycles,
+            split,
+            dist,
+            numSegments,
+            splitPx,
+            pixelsPerMm,
+          )
+        : 0;
+
+    const coords: Coordinate[] = [];
+    for (let j = 1; j < numSegments; j++) {
+      const t = Math.max(0, Math.min(1, j / numSegments + rowShift));
+      const p = Vector.fromObject(a).lerp(Vector.fromObject(b), t);
+      coords.push(new Coordinate(p.x, p.y));
+    }
+
+    coords.push(b);
+    return coords;
+  }
+
+  private getStaggerRowShift(
+    crossIdx: number,
+    staggerCycles: number,
+    split: SatinSplitOptions,
+    dist: number,
+    numSegments: number,
+    splitPx: number,
+    pixelsPerMm: number,
+  ): number {
+    const slotWidthT = 1 / numSegments;
+    const staggerAmountMm = split.staggerAmountMm ?? 2;
+    const maxOffsetT = Math.min((staggerAmountMm * pixelsPerMm) / dist, slotWidthT);
+    const tierFill = Math.min(1, dist / (numSegments * splitPx));
+    const magnitudeScale = ((crossIdx % staggerCycles) + 1) / staggerCycles;
+    const direction = crossIdx % 2 === 0 ? -1 : 1;
+    return direction * maxOffsetT * tierFill * magnitudeScale;
   }
 
   getUnderlayOptionsOrDefault(
