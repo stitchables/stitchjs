@@ -31,15 +31,33 @@ import MinPriorityQueue from '../../Optimize/MinPriorityQueue';
 import VWSimplifier from 'jsts/org/locationtech/jts/simplify/VWSimplifier';
 import { resample } from '../../Geometry/resample';
 
+type AutoFillPatternRow = {
+  rowOffsetMm: number;
+  rowPatternMm: number[];
+};
+
+type FillGradient = {
+  endRowSpacingMm: number;
+} & (
+  | {
+      mode: 'ramp';
+      start: number;
+      end: number;
+    }
+  | {
+      mode: 'plateau';
+      center: number;
+      plateauWidth: number;
+    }
+);
+
 export class AutoFill implements IRun {
   shell: Polyline;
   holes: Polyline[];
   angle: number;
   rowSpacingMm: number;
-  fillPattern: {
-    rowOffsetMm: number;
-    rowPatternMm: number[];
-  }[] = [];
+  fillPattern: AutoFillPatternRow[] = [];
+  gradient?: FillGradient;
   travelStitchLengthMm: number;
   startPosition: Vector;
   endPosition: Vector;
@@ -50,6 +68,9 @@ export class AutoFill implements IRun {
   polygon: Polygon;
   boundary: Geometry;
   boundingRadius: number;
+  gradientNormal: Vector;
+  gradientMinProj: number;
+  gradientMaxProj: number;
   shapeGeoms: {
     geometry: LinearRing;
     lengthIndexedLine: LengthIndexedLine;
@@ -60,21 +81,20 @@ export class AutoFill implements IRun {
     holes: Polyline[],
     angle: number,
     rowSpacingMm: number,
-    fillPattern: {
-      rowOffsetMm: number;
-      rowPatternMm: number[];
-    }[],
+    fillPattern: AutoFillPatternRow[],
     travelStitchLengthMm: number,
     startPosition: Vector,
     endPosition: Vector,
     centerPosition?: Vector,
     underpath = true,
+    gradient?: FillGradient,
   ) {
     this.shell = shell;
     this.holes = holes;
     this.angle = angle;
     this.rowSpacingMm = rowSpacingMm;
     this.fillPattern = fillPattern;
+    this.gradient = gradient;
     this.travelStitchLengthMm = travelStitchLengthMm;
     this.startPosition = startPosition;
     this.endPosition = endPosition;
@@ -110,16 +130,29 @@ export class AutoFill implements IRun {
     } else {
       this.centerPosition = new Vector(boundingCenter.x, boundingCenter.y);
     }
+
+    // Account for stitch angle when calculating gradient
+    this.gradientNormal = Vector.fromAngle(this.angle + 0.5 * Math.PI);
+    let minProj = Infinity;
+    let maxProj = -Infinity;
+    for (const v of this.shell.vertices) {
+      const proj = v.dot(this.gradientNormal);
+      if (proj < minProj) minProj = proj;
+      if (proj > maxProj) maxProj = proj;
+    }
+    this.gradientMinProj = minProj;
+    this.gradientMaxProj = maxProj;
+  }
+
+  getGradientT(rowCenter: Vector): number {
+    const span = this.gradientMaxProj - this.gradientMinProj;
+    if (span === 0) return 0;
+    const rawT = (rowCenter.dot(this.gradientNormal) - this.gradientMinProj) / span;
+    return Math.max(0, Math.min(1, rawT));
   }
 
   getStitches(pixelsPerMm: number): Stitch[] {
-    const fillRows = this.getRows(
-      this.centerPosition,
-      this.angle,
-      this.boundingRadius,
-      pixelsPerMm * this.rowSpacingMm,
-      'fill',
-    );
+    const fillRows = this.getFillRows(pixelsPerMm);
     const fillRowsIntersection = OverlayOp.intersection(this.polygon, fillRows);
     if (fillRowsIntersection.isEmpty()) {
       console.log('small shape - did not intersect with the grating');
@@ -138,6 +171,83 @@ export class AutoFill implements IRun {
       stitches.push(new Stitch(this.endPosition, StitchType.JUMP));
     }
     return stitches;
+  }
+
+  getRowSpacingAtRowCenter(rowCenter: Vector, pixelsPerMm: number): number {
+    const startSpacing = this.rowSpacingMm * pixelsPerMm;
+    if (!this.gradient) return startSpacing;
+
+    const endSpacing = this.gradient.endRowSpacingMm * pixelsPerMm;
+    if (endSpacing === startSpacing) return startSpacing;
+
+    const t = this.getGradientT(rowCenter);
+    const { gradient } = this;
+
+    if (gradient.mode === 'ramp') {
+      const start = Math.max(0, Math.min(1, gradient.start));
+      const end = Math.max(0, Math.min(1, gradient.end));
+      if (start === end) return startSpacing;
+      const lo = Math.min(start, end);
+      const hi = Math.max(start, end);
+      const s0 = start < end ? startSpacing : endSpacing;
+      const s1 = start < end ? endSpacing : startSpacing;
+      if (t <= lo) return s0;
+      if (t >= hi) return s1;
+      return s0 + ((t - lo) / (hi - lo)) * (s1 - s0);
+    }
+
+    const center = Math.max(0, Math.min(1, gradient.center));
+    const halfWidth = 0.5 * Math.max(0, Math.min(1, gradient.plateauWidth));
+    const plateauStart = Math.max(0, center - halfWidth);
+    const plateauEnd = Math.min(1, center + halfWidth);
+    if (t >= plateauStart && t <= plateauEnd) return startSpacing;
+    if (t < plateauStart) {
+      return plateauStart === 0
+        ? startSpacing
+        : endSpacing + (t / plateauStart) * (startSpacing - endSpacing);
+    }
+    return plateauEnd === 1
+      ? startSpacing
+      : startSpacing +
+          ((t - plateauEnd) / (1 - plateauEnd)) * (endSpacing - startSpacing);
+  }
+
+  getFillRows(pixelsPerMm: number) {
+    const center = this.centerPosition;
+    const angle = this.angle;
+    const radius = this.boundingRadius;
+
+    const dir = Vector.fromAngle(angle).multiply(radius);
+    const p1 = center.add(dir);
+    const p2 = center.subtract(dir);
+    const n = Vector.fromAngle(angle + 0.5 * Math.PI);
+
+    const lineStrings = [
+      this.buildLineString([new Coordinate(p1.x, p1.y), new Coordinate(p2.x, p2.y)], {
+        index: 0,
+      }),
+    ];
+
+    for (const sign of [1, -1]) {
+      let r = 0;
+      while (r < radius) {
+        const rowCenter = center.add(n.multiply(sign * r));
+        r += Math.max(this.getRowSpacingAtRowCenter(rowCenter, pixelsPerMm), 0.001);
+        if (r >= radius) break;
+        const offset = n.multiply(sign * r);
+        lineStrings.push(
+          this.buildLineString(
+            [
+              new Coordinate(p1.x + offset.x, p1.y + offset.y),
+              new Coordinate(p2.x + offset.x, p2.y + offset.y),
+            ],
+            { index: sign * Math.round(r) },
+          ),
+        );
+      }
+    }
+
+    return this.buildMultiLineString(lineStrings, { angle, label: 'fill' });
   }
 
   getRows(center: Vector, angle: number, radius: number, spacing: number, label = '') {
