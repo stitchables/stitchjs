@@ -252,9 +252,8 @@ export class Redwork implements IRun {
           stitches.push(new Stitch(new Vector(c.x, c.y), StitchType.NORMAL));
         }
       } else {
-        for (const c of line.getCoordinates()) {
-          stitches.push(new Stitch(new Vector(c.x, c.y), StitchType.JUMP));
-        }
+        const c = line.getCoordinateN(0);
+        stitches.push(new Stitch(new Vector(c.x, c.y), StitchType.JUMP));
       }
     }
     return stitches;
