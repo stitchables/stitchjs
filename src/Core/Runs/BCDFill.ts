@@ -384,6 +384,13 @@ export class BCDFill implements IRun {
   travelStitchToleranceMm: number;
   gradient: FillGradient | undefined;
   /**
+   * When true, drop the last stitch of every fill row: it lands right beside
+   * the first stitch of the next row, so skipping it thins the doubled-up
+   * penetrations along the row ends without changing the path (the row's
+   * final corner still shapes the serpentine; it just isn't penetrated).
+   */
+  skipLast: boolean;
+  /**
    * How the cell tour is scheduled.
    * 'dfs' (default): depth-first walk of a spanning tree rooted at the end
    * cell, children ordered with lookahead, post-order filling.
@@ -431,6 +438,7 @@ export class BCDFill implements IRun {
       travelStitchLengthMm?: number;
       travelStitchToleranceMm?: number;
       gradient?: FillGradient;
+      skipLast?: boolean;
       underpath?: boolean;
       tour?: 'dfs' | 'peel';
     },
@@ -449,7 +457,8 @@ export class BCDFill implements IRun {
     this.travelStitchLengthMm = options?.travelStitchLengthMm ?? 3;
     this.travelStitchToleranceMm = options?.travelStitchToleranceMm ?? 0.1;
     this.gradient = options?.gradient;
-    this.tour = options?.tour ?? 'dfs';
+    this.skipLast = options?.skipLast ?? true;
+    this.tour = options?.tour ?? 'peel';
     this.underpath = options?.underpath ?? true;
 
     this.polygon = createPolygon(polygon.shell, polygon.holes);
@@ -1856,6 +1865,7 @@ export class BCDFill implements IRun {
         const a = c[i],
           b = c[i + 1];
         push(a, StitchType.NORMAL);
+        let interior = 0;
         if (np > 0) {
           const aS = rot.toSweep(a),
             bS = rot.toSweep(b);
@@ -1902,8 +1912,12 @@ export class BCDFill implements IRun {
               StitchType.NORMAL,
             );
           }
+          interior = within.length;
         }
-        push(b, StitchType.NORMAL);
+        // skipLast drops the row-end penetration (it sits right beside the
+        // next row's first stitch) — unless the row has no interior stitches,
+        // where dropping it would collapse the row to a single point.
+        if (!this.skipLast || interior === 0) push(b, StitchType.NORMAL);
       }
     }
     return stitches;

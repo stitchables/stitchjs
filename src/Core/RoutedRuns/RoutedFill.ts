@@ -4,10 +4,9 @@ import { Coordinate, Point, Polygon } from 'jsts/org/locationtech/jts/geom';
 import PolygonExtracter from 'jsts/org/locationtech/jts/geom/util/PolygonExtracter';
 import { geometryFactory } from '../../util/jsts';
 import { Stitch } from '../Stitch';
-import { AutoFill } from '../Runs/AutoFill';
-import { Polyline } from '../../Math/Polyline';
 import { AutoRoute } from './AutoRoute';
 import { createPolygon } from '../../Geometry/createPolygon';
+import { BCDFill } from '../Runs/BCDFill';
 
 interface UnderlayParams {
   insetMm?: number;
@@ -18,6 +17,21 @@ interface UnderlayParams {
   travelToleranceMm?: number;
 }
 
+type FillGradient = {
+  endRowSpacingMm: number;
+} & (
+  | {
+      mode: 'ramp';
+      start: number;
+      end: number;
+    }
+  | {
+      mode: 'plateau';
+      center: number;
+      plateauWidth: number;
+    }
+);
+
 export class RoutedFill implements IRoutedRun {
   shell: Vector[];
   holes?: Vector[][];
@@ -27,10 +41,12 @@ export class RoutedFill implements IRoutedRun {
   stitchLengthMm: number;
   travelLengthMm: number;
   travelToleranceMm: number;
-  centerPoint: Point;
+  centerPoint: Point | undefined;
   fillPattern: { rowOffsetMm: number; rowPatternMm: number[] }[];
   underPath: boolean;
   underlays: UnderlayParams[];
+  gradient: FillGradient | undefined;
+  skipLast: boolean;
 
   constructor(
     polygon: { shell: Vector[]; holes?: Vector[][] },
@@ -47,6 +63,8 @@ export class RoutedFill implements IRoutedRun {
       }[];
       underPath?: boolean;
       underlays?: UnderlayParams[];
+      gradient?: FillGradient;
+      skipLast?: boolean;
     },
   ) {
     this.shell = polygon.shell;
@@ -57,7 +75,9 @@ export class RoutedFill implements IRoutedRun {
     this.stitchLengthMm = options?.stitchLengthMm ?? 3;
     this.travelLengthMm = options?.travelLengthMm ?? 4;
     this.travelToleranceMm = options?.travelToleranceMm ?? 0.1;
-    this.centerPoint = geometryFactory.createPoint();
+    this.centerPoint = options?.centerPosition !== undefined
+      ? geometryFactory.createPoint(options.centerPosition.x, options.centerPosition.y)
+      : undefined;
     this.fillPattern = options?.fillPattern ?? [
       { rowOffsetMm: 0, rowPatternMm: [this.stitchLengthMm] },
       { rowOffsetMm: 0.33 * this.stitchLengthMm, rowPatternMm: [this.stitchLengthMm] },
@@ -65,6 +85,8 @@ export class RoutedFill implements IRoutedRun {
     ];
     this.underPath = options?.underPath ?? true;
     this.underlays = options?.underlays ?? [];
+    this.gradient = options?.gradient;
+    this.skipLast = options?.skipLast ?? true;
   }
 
   getShape(): Polygon {
@@ -172,18 +194,23 @@ export class RoutedFill implements IRoutedRun {
     pixelsPerMm: number,
     options?: { entry?: Coordinate; exit?: Coordinate },
   ): Stitch[] {
-    const center = this.polygon.getCentroid();
-    const fill = new AutoFill(
-      Polyline.fromObjects(this.shell, true),
-      this.holes?.map((h) => Polyline.fromObjects(h, true)) ?? [],
-      this.angle,
-      this.rowSpacingMm,
-      this.fillPattern,
-      this.travelLengthMm,
-      new Vector(options?.entry?.x ?? 0, options?.entry?.y ?? 0),
-      new Vector(options?.exit?.x ?? 0, options?.exit?.y ?? 0),
-      new Vector(center.getX(), center.getY()),
-      this.underPath,
+    const fill = new BCDFill(
+      { shell: this.shell, holes: this.holes },
+      {
+        entry: options?.entry
+          ? new Vector(options?.entry.x, options?.entry.y)
+          : undefined,
+        exit: options?.entry ? new Vector(options?.entry.x, options?.entry.y) : undefined,
+        angle: this.angle,
+        rowSpacingMm: this.rowSpacingMm,
+        fillPattern: this.fillPattern,
+        fillPatternCenterPosition: this.centerPoint ? new Vector(this.centerPoint.getX(), this.centerPoint.getY()) : undefined,
+        travelStitchLengthMm: this.travelLengthMm,
+        travelStitchToleranceMm: this.travelToleranceMm,
+        gradient: this.gradient,
+        skipLast: this.skipLast,
+        underpath: this.underPath,
+      },
     );
     return fill.getStitches(pixelsPerMm);
   }
