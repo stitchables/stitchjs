@@ -8,6 +8,9 @@ dependencies:
   '@dagrejs/graphlib':
     specifier: ^4.0.1
     version: 4.0.1
+  '@matthewjacobson/bcd':
+    specifier: ^0.2.1
+    version: 0.2.1
   '@matthewjacobson/ess':
     specifier: ^0.2.0
     version: 0.2.0
@@ -23,6 +26,9 @@ dependencies:
   jsts:
     specifier: ^2.12.1
     version: 2.12.1
+  voron8:
+    specifier: ^3.4.2
+    version: 3.4.2
 
 devDependencies:
   '@changesets/cli':
@@ -528,6 +534,11 @@ packages:
       globby: 11.1.0
       read-yaml-file: 1.1.0
     dev: true
+
+  /@matthewjacobson/bcd@0.2.1:
+    resolution: {integrity: sha512-ZmOXAt4xzp/9vLPWqmytHM+dRK6Mttk2+9RZqffEEjzrmRCcFKIetXuZl5gGch8f4C8cOc9rAIcC4Y/b8MwO6A==}
+    engines: {node: '>=18'}
+    dev: false
 
   /@matthewjacobson/ess@0.2.0:
     resolution: {integrity: sha512-EP701KVpg/lEOKspvi+wWUSu8EO5GvFW9Z+7K19EvG7YaePyXgTJbOXxBoOMbG88ZbVbEK3bjfJFH40Ynllr+w==}
@@ -1591,6 +1602,10 @@ packages:
     resolution: {integrity: sha512-rBJeI5CXAlmy1pV+617WB9J63U6XcazHHF2f2dbJix4XzpUF0RS3Zbj0FGIOCAva5P/d/GBOYaACQ1w+0azUkg==}
     engines: {node: '>= 4.0.0'}
     dev: true
+
+  /voron8@3.4.2:
+    resolution: {integrity: sha512-/by4Bng67pIhL/ZTBLh2gQqp+eBIi1AgAFDhmVh526ao+DCpMxDlBGpDlEfX5auVsbI+gKAuER8ngIdUYhs+Xg==}
+    dev: false
 
   /which@2.0.2:
     resolution: {integrity: sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==}

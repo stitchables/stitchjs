@@ -7,12 +7,14 @@ import { IO } from './IO';
 import { Math } from './Math';
 import { Optimize } from './Optimize';
 import * as str8 from '@matthewjacobson/str8';
+import * as voron8 from 'voron8';
 
 // initialize wasm stuff here
 export var isInitialized = false;
 export async function init() {
   if (!isInitialized) {
     await str8.init();
+    await voron8.init();
     isInitialized = true;
   }
 }

@@ -42,9 +42,11 @@ export class Redwork implements IRun {
     const toLineString = (vs: Vector[]) => {
       return geometryFactory.createLineString(vs.map(toCoord));
     };
-    const denseLines = lines.map((l) => {
-      return Densifier.densify(toLineString(l), options?.densifyDistancePx || 10);
-    });
+    const denseLines = lines
+      .map((l) => {
+        return Densifier.densify(toLineString(l), options?.densifyDistancePx || 10);
+      })
+      .filter((l: LineString) => l.getLength() > 0);
 
     // node the original lines - splits lines where they intersect
     const precisionModel = new PrecisionModel(options?.precisionModelScale || 10);

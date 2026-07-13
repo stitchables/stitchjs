@@ -12,6 +12,7 @@ import { EStitch } from './EStitch';
 import { CircularFill } from './CircularFill';
 import { Redwork } from './Redwork';
 import { StreamlineFill } from './StreamlineFill';
+import { BCDFill } from './BCDFill';
 
 export const Runs = {
   Run,
@@ -28,4 +29,5 @@ export const Runs = {
   CircularFill,
   Redwork,
   StreamlineFill,
+  BCDFill,
 };

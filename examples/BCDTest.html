@@ -1,125 +1,371 @@
 <!doctype html>
 <html>
 <head>
-  <title>Polygon Path Finder Test</title>
+  <title>BCDFill Example</title>
   <script src="../dist/stitch.global.js"></script>
   <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
-  <script src="https://cdn.jsdelivr.net/npm/p5@2.2.2/lib/p5.js"></script>
 </head>
 <body>
-<script>
+<select id="fileSelect" style="position: relative; z-index: 999;"></select>
+<input id="angleSlider" type="range" min="0" max="3.14159" value="0" step="0.01" style="position: relative; z-index: 999;">
+<div style="position: fixed; left: 0; right: 0; bottom: 10px; z-index: 999; display: flex; gap: 10px; align-items: center; padding: 0 20px;">
+  <input id="stitchSlider" type="range" min="0" max="0" value="0" step="1" style="flex: 1;">
+  <span id="stitchReadout" style="font: 13px monospace; background: rgba(255,255,255,0.8); padding: 2px 6px;"></span>
+</div>
+<script type="module">
 
-  const shell = Stitch.Math.Polyline.fromArrays([
-    [102, 356], [24, 251], [32, 179], [84, 250], [58, 145], [80, 108], [127, 46],
-    [127, 102], [102, 140], [116, 164], [135, 188], [171, 151], [193, 106], [201, 73],
-    [233, 57], [232, 86], [225, 112], [240, 116], [256, 94], [279, 73], [320, 85],
-    [329, 118], [354, 173], [362, 228], [356, 266], [312, 211], [269, 190], [247, 206],
-    [227, 240], [228, 262], [243, 255], [246, 233], [256, 218], [282, 219], [312, 246],
-    [323, 268], [331, 301], [319, 325], [290, 356], [248, 362], [216, 357], [205, 337],
-    [199, 293], [189, 246], [172, 235], [152, 245], [139, 261], [138, 283], [146, 277],
-    [159, 257], [174, 256], [174, 274], [177, 302], [177, 336], [158, 358], [121, 366],
-    [102, 356]
-  ]).getRounded(10, 0.5).vertices;
-  // .getRounded(10, 0.5)
-  const holes = [
-    [[142, 324], [142, 296], [121, 297], [108, 315], [125, 338], [142, 324]],
-    [[206, 139], [194, 150], [203, 166], [217, 146], [206, 139]],
-    [[234, 309], [234, 326], [260, 326], [286, 295], [286, 264], [254, 279], [234, 309]]
-  ].map(p => Stitch.Math.Polyline.fromArrays(p).getRounded(10, 0.5).vertices);
+  const select = document.getElementById("fileSelect");
+  const angleSlider = document.getElementById("angleSlider");
+  const stitchSlider = document.getElementById("stitchSlider");
+  const stitchReadout = document.getElementById("stitchReadout");
 
-  // const shell = Stitch.Math.Polyline.fromArrays([
-  //   [50, 50], [350, 50], [350, 350], [50, 350], [50, 50]
-  // ]).vertices;
-  // const holes = [
-  //   [[100, 100], [200, 100], [200, 150], [100, 150], [100, 100]],
-  //   [[200, 300], [300, 300], [300, 250], [200, 250], [200, 300]]
-  // ].map(p => Stitch.Math.Polyline.fromArrays(p).vertices);
+  let polygons = {};
+  Stitch.init().then(() => fetch("./polygons.json").then(f => {
+    f.json().then(json => {
+      for (const { id, label, boundingBox, rings } of json.polygons) {
+        polygons[id] = { boundingBox, rings };
+        const option = document.createElement("option");
+        option.value = id;
+        option.textContent = label;
+        select.appendChild(option);
+      }
+      select.value = 'gray-embroidery';
+      select.dispatchEvent(new Event('change'));
+    });
+  }));
 
-  const polygon = Stitch.Geometry.createPolygon(shell, holes);
-  let bcd = Stitch.Geometry.getBCD(polygon, 0);
-  let index1 = 0;
-  let index2 = 0;
+  let pattern = null, canvas = null, modal = null;
+  function createPattern() {
+    const polygon = polygons[select.value];
+    const padding = 25;
+    const width = polygon.boundingBox.xMax - polygon.boundingBox.xMin + 2 * padding;
+    const height = polygon.boundingBox.yMax - polygon.boundingBox.yMin + 2 * padding;
+    pattern = new Stitch.Core.Pattern(width, height);
+    const debug = pattern.addThread(255, 0, 0);
+    const thread = pattern.addThread(0, 0, 0);
 
-  async function setup() {
-    createCanvas(400, 400);
-    await Stitch.init();
+    const xOffset = polygon.boundingBox.xMin - padding;
+    const yOffset = polygon.boundingBox.yMin - padding;
+    const rings = polygon.rings.map(ring => {
+      const vectors = ring.map(p => new Stitch.Math.Vector(p[0] - xOffset, p[1] - yOffset));
+      vectors.push(vectors[0]);
+      return vectors;
+    });
+
+    for (const ring of rings) {
+      debug.addRun(new Stitch.Core.Runs.Run(ring));
+    }
+
+    const start1 = performance.now();
+    const bcdFill = new Stitch.Core.Runs.BCDFill({
+      shell: rings[0],
+      holes: rings.slice(1)
+    }, {
+      // rowSpacingMm: 10,
+      angle: parseFloat(angleSlider.value),
+      // angle: 0.4,
+      // underpath: false,
+      // tour: 'peel',
+      // fillPattern: [
+      //   { rowOffsetMm: 0, rowPatternMm: [5] },
+      //   // { rowOffsetMm: 0, rowPatternMm: [3] },
+      //   // { rowOffsetMm: 0, rowPatternMm: [3] },
+      //   // { rowOffsetMm: 0, rowPatternMm: [3] },
+      //   // { rowOffsetMm: 0, rowPatternMm: [3] },
+      //   // { rowOffsetMm: 0, rowPatternMm: [3] },
+      //   // { rowOffsetMm: 1.5, rowPatternMm: [3] },
+      //   // { rowOffsetMm: 1.5, rowPatternMm: [3] },
+      //   // { rowOffsetMm: 1.5, rowPatternMm: [3] },
+      //   // { rowOffsetMm: 1.5, rowPatternMm: [3] },
+      //   // { rowOffsetMm: 1.5, rowPatternMm: [3] },
+      //   // { rowOffsetMm: 1.5, rowPatternMm: [3] },
+      // ]
+    });
+    const bcdFillStitches = bcdFill.getStitches(2.5);
+    const end1 = performance.now();
+
+    // const start2 = performance.now();
+    // const autoFill = new Stitch.Core.Runs.AutoFill(
+    //   Stitch.Math.Polyline.fromVectors(rings[0]),
+    //   rings.slice(1).map(r => Stitch.Math.Polyline.fromVectors(r)),
+    //   parseFloat(angleSlider.value),
+    //   0.2,
+    //   [
+    //     { rowOffsetMm: 0, rowPatternMm: [3] },
+    //     { rowOffsetMm: 1, rowPatternMm: [3] },
+    //     { rowOffsetMm: 2, rowPatternMm: [3] },
+    //   ],
+    //   3,
+    //   rings[0][0],
+    //   rings[0][0],
+    // );
+    // const autoFillStitches = autoFill.getStitches(2.5);
+    // const end2 = performance.now();
+    // console.log("~~~~~~~~~~~~~~~~~~~~~~~~~");
+    // console.log(`new: ${Math.round(end1 - start1)} ms, ${bcdFillStitches.length} # stitches`);
+    // console.log(`old: ${Math.round(end2 - start2)} ms, ${autoFillStitches.length} # stitches`);
+    // console.log(`ratio: ${Math.round((end2 - start2) / (end1 - start1))}x`)
+
+    thread.addRun(bcdFill);
+
+    rebuildCanvases();
+    stitchSlider.max = segments.length;
+    stitchSlider.value = segments.length;
+    scrubTo(segments.length);
+
+    if (modal) modal.container.remove();
+    modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'redWorkHandStreamlines', 10, 500);
+    document.body.appendChild(modal.container);
   }
 
-  async function draw() {
-    background(0);
-
-    stroke(255);
-    strokeWeight(1);
-    noFill();
-    drawGeom(polygon);
-
-    bcd = Stitch.Geometry.getBCD(polygon, map(mouseX, 0, width, 0, 2 * PI));
-    // for (const polygon of bcd.polygons) {
-    fill(255, 50);
-    drawGeom(bcd.polygons[index1 % bcd.polygons.length]);
-    const coordinates = bcd.polygons[index1 % bcd.polygons.length].getCoordinates();
-    for (const c of coordinates) circle(c.x, c.y, 5);
-
-    stroke(255, 0, 0);
-    strokeWeight(5);
-    const c1 = coordinates[index2 % (coordinates.length - 1)];
-    const c2 = coordinates[(index2 + 1) % (coordinates.length - 1)];
-    line(c1.x, c1.y, c2.x, c2.y);
-    // }
+  // --- stitch-out scrubber: mirrors Stitch.Graphics.getCanvas, but draws only
+  // the first N segments so the stitch-out order can be inspected. ---
+  const rgbToHex = (r, g, b) =>
+    '#' + [r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+  function shadeColor(color, percent) {
+    const num = parseInt(color.slice(1), 16);
+    const amt = Math.round(2.55 * percent);
+    const clamp = (v) => v < 1 ? 0 : v > 255 ? 255 : v;
+    const r = clamp((num >> 16) + amt);
+    const g = clamp(((num >> 8) & 0xff) + amt);
+    const b = clamp((num & 0xff) + amt);
+    return '#' + (0x1000000 + r * 0x10000 + g * 0x100 + b).toString(16).slice(1);
   }
 
-  function keyPressed() {
-    if (keyCode === 37 || keyCode === 39) index1++;
-    if (keyCode === 38 || keyCode === 40) index2++;
-  }
+  let segments = [], drawnCount = 0, ctx = null, overlay = null, overlayCtx = null;
 
-  function drawGeom(g) {
-    let geomType = g.getGeometryType();
-    if (geomType === 'MultiLineString') {
-      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
-        drawGeom(g.getGeometryN(i));
-      }
-    } else if (geomType === 'LineString' || geomType === 'LinearRing') {
-      beginShape();
-      for (let i = 0, n = g.getNumPoints(); i < n; i++) {
-        const p = g.getPointN(i);
-        vertex(p.getX(), p.getY());
-      }
-      endShape();
-    } else if (geomType === 'Polygon') {
-      const shell = g.getExteriorRing();
-      beginShape();
-      for (let i = 0, n = shell.getNumPoints(); i < n; i++) {
-        const p = shell.getPointN(i);
-        vertex(p.getX(), p.getY());
-      }
-      for (let i = 0, n = g.getNumInteriorRing(); i < n; i++) {
-        const hole = g.getInteriorRingN(i);
-        beginContour();
-        for (let j = 0, m = hole.getNumPoints(); j < m; j++) {
-          const p = hole.getPointN(j);
-          vertex(p.getX(), p.getY());
+  function rebuildCanvases() {
+    const widthPx = window.innerWidth, heightPx = window.innerHeight, pixelMultiplier = 5;
+    const plan = pattern.getStitchPlan(widthPx, heightPx, pixelMultiplier);
+    const scale = pixelMultiplier / plan.pixelsPerUnit;
+    const tx = 0.5 * (widthPx - plan.width);
+    const ty = 0.5 * (heightPx - plan.height);
+    segments = [];
+    for (const t of plan.threads) {
+      const hexColor = rgbToHex(t.thread.red, t.thread.green, t.thread.blue);
+      const endColor = shadeColor(hexColor, -60);
+      const midColor = shadeColor(hexColor, 60);
+      for (const r of t.runs) {
+        for (let i = 1; i < r.length; i++) {
+          segments.push({
+            x1: r[i - 1].position.x * scale + tx, y1: r[i - 1].position.y * scale + ty,
+            x2: r[i].position.x * scale + tx, y2: r[i].position.y * scale + ty,
+            hexColor, endColor, midColor,
+          });
         }
-        endContour(CLOSE);
-      }
-      endShape(CLOSE);
-    } else if (geomType === 'GeometryCollection') {
-      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
-        drawGeom(g.getGeometryN(i));
-      }
-    } else if (geomType === 'Point') {
-      const coord = g.getCoordinate();
-      circle(coord.x, coord.y, 5);
-    } else if (geomType === 'MultiPolygon') {
-      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
-        drawGeom(g.getGeometryN(i));
       }
     }
-    else {
-      console.log(`Unrecognized Geometry Type: ${geomType}`);
+    if (canvas) canvas.remove();
+    if (overlay) overlay.remove();
+    const style = 'margin: auto; position: absolute; inset: 0;';
+    canvas = document.createElement('canvas');
+    [canvas.width, canvas.height] = [widthPx, heightPx];
+    canvas.setAttribute('style', style);
+    ctx = canvas.getContext('2d');
+    [ctx.lineWidth, ctx.lineJoin] = [1.5, 'round'];
+    overlay = document.createElement('canvas');
+    [overlay.width, overlay.height] = [widthPx, heightPx];
+    overlay.setAttribute('style', style);
+    overlayCtx = overlay.getContext('2d');
+    document.body.append(canvas, overlay);
+    drawnCount = 0;
+  }
+
+  function drawSegments(from, to) {
+    for (let i = from; i < to; i++) {
+      const s = segments[i];
+      const gWidth = Math.hypot(s.x2 - s.x1, s.y2 - s.y1);
+      const gradient = ctx.createRadialGradient(s.x1, s.y1, 0, s.x1, s.y1, gWidth);
+      gradient.addColorStop(0, s.endColor);
+      gradient.addColorStop(0.05, s.hexColor);
+      gradient.addColorStop(0.5, s.midColor);
+      gradient.addColorStop(0.9, s.hexColor);
+      gradient.addColorStop(1.0, s.endColor);
+      ctx.strokeStyle = gradient;
+      ctx.beginPath();
+      ctx.moveTo(s.x1, s.y1);
+      ctx.lineTo(s.x2, s.y2);
+      ctx.stroke();
     }
   }
 
+  function scrubTo(n) {
+    n = Math.max(0, Math.min(segments.length, n));
+    if (n < drawnCount) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawnCount = 0;
+    }
+    drawSegments(drawnCount, n);
+    drawnCount = n;
+    overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+    if (n > 0) {
+      const s = segments[n - 1];
+      overlayCtx.strokeStyle = '#e00';
+      overlayCtx.lineWidth = 1.5;
+      overlayCtx.beginPath();
+      overlayCtx.arc(s.x2, s.y2, 6, 0, 2 * Math.PI);
+      overlayCtx.stroke();
+    }
+    stitchReadout.textContent = `${n} / ${segments.length}`;
+  }
+
+  stitchSlider.addEventListener("input", () => scrubTo(parseInt(stitchSlider.value, 10)));
+
+  select.addEventListener("change", () => createPattern());
+  angleSlider.addEventListener("change", () => createPattern());
+
+  window.addEventListener('click', (e) => { if (modal && e.target === modal.container) modal.close(); });
+  window.addEventListener('keydown', (e) => { if (modal && e.code === 'KeyD') modal.open(); });
+  window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
+    const n = parseInt(stitchSlider.value, 10);
+    rebuildCanvases();
+    stitchSlider.max = segments.length;
+    scrubTo(Math.min(n, segments.length));
+  }, 10));
+
+
+  // const select = document.getElementById("fileSelect");
+  // const output = document.getElementById("output");
+  //
+  // const files = await fetch("./data/files.json").then(r => r.json());
+  //
+  // for (const file of files) {
+  //   const option = document.createElement("option");
+  //   option.value = file;
+  //   option.textContent = file;
+  //   select.appendChild(option);
+  // }
+  //
+  // async function loadJSON(file) {
+  //   const data = await fetch(`./data/${file}`).then(r => r.json());
+  //   output.textContent = JSON.stringify(data, null, 2);
+  //
+  //   // do something with `data` here
+  //   console.log(data);
+  // }
+  //
+  // select.addEventListener("change", () => {
+  //   loadJSON(select.value);
+  // });
+  //
+  // if (files.length > 0) {
+  //   select.value = files[0];
+  //   loadJSON(files[0]);
+  // }
 </script>
+<!--<script>-->
+
+<!--  const shell = Stitch.Math.Polyline.fromArrays([-->
+<!--    [102, 356], [24, 251], [32, 179], [84, 250], [58, 145], [80, 108], [127, 46],-->
+<!--    [127, 102], [102, 140], [116, 164], [135, 188], [171, 151], [193, 106], [201, 73],-->
+<!--    [233, 57], [232, 86], [225, 112], [240, 116], [256, 94], [279, 73], [320, 85],-->
+<!--    [329, 118], [354, 173], [362, 228], [356, 266], [312, 211], [269, 190], [247, 206],-->
+<!--    [227, 240], [228, 262], [243, 255], [246, 233], [256, 218], [282, 219], [312, 246],-->
+<!--    [323, 268], [331, 301], [319, 325], [290, 356], [248, 362], [216, 357], [205, 337],-->
+<!--    [199, 293], [189, 246], [172, 235], [152, 245], [139, 261], [138, 283], [146, 277],-->
+<!--    [159, 257], [174, 256], [174, 274], [177, 302], [177, 336], [158, 358], [121, 366],-->
+<!--    [102, 356]-->
+<!--  ]).getRounded(10, 0.5).vertices;-->
+<!--  // .getRounded(10, 0.5)-->
+<!--  const holes = [-->
+<!--    [[142, 324], [142, 296], [121, 297], [108, 315], [125, 338], [142, 324]],-->
+<!--    [[206, 139], [194, 150], [203, 166], [217, 146], [206, 139]],-->
+<!--    [[234, 309], [234, 326], [260, 326], [286, 295], [286, 264], [254, 279], [234, 309]]-->
+<!--  ].map(p => Stitch.Math.Polyline.fromArrays(p).getRounded(10, 0.5).vertices);-->
+
+<!--  // const shell = Stitch.Math.Polyline.fromArrays([-->
+<!--  //   [50, 50], [350, 50], [350, 350], [50, 350], [50, 50]-->
+<!--  // ]).vertices;-->
+<!--  // const holes = [-->
+<!--  //   [[100, 100], [200, 100], [200, 150], [100, 150], [100, 100]],-->
+<!--  //   [[200, 300], [300, 300], [300, 250], [200, 250], [200, 300]]-->
+<!--  // ].map(p => Stitch.Math.Polyline.fromArrays(p).vertices);-->
+
+<!--  const polygon = Stitch.Geometry.createPolygon(shell, holes);-->
+<!--  let bcd = Stitch.Geometry.getBCD(polygon, 0);-->
+<!--  let index1 = 0;-->
+<!--  let index2 = 0;-->
+
+<!--  async function setup() {-->
+<!--    createCanvas(400, 400);-->
+<!--    await Stitch.init();-->
+<!--  }-->
+
+<!--  async function draw() {-->
+<!--    background(0);-->
+
+<!--    stroke(255);-->
+<!--    strokeWeight(1);-->
+<!--    noFill();-->
+<!--    drawGeom(polygon);-->
+
+<!--    bcd = Stitch.Geometry.getBCD(polygon, map(mouseX, 0, width, 0, 2 * PI));-->
+<!--    // for (const polygon of bcd.polygons) {-->
+<!--    fill(255, 50);-->
+<!--    drawGeom(bcd.polygons[index1 % bcd.polygons.length]);-->
+<!--    const coordinates = bcd.polygons[index1 % bcd.polygons.length].getCoordinates();-->
+<!--    for (const c of coordinates) circle(c.x, c.y, 5);-->
+
+<!--    stroke(255, 0, 0);-->
+<!--    strokeWeight(5);-->
+<!--    const c1 = coordinates[index2 % (coordinates.length - 1)];-->
+<!--    const c2 = coordinates[(index2 + 1) % (coordinates.length - 1)];-->
+<!--    line(c1.x, c1.y, c2.x, c2.y);-->
+<!--    // }-->
+<!--  }-->
+
+<!--  function keyPressed() {-->
+<!--    if (keyCode === 37 || keyCode === 39) index1++;-->
+<!--    if (keyCode === 38 || keyCode === 40) index2++;-->
+<!--  }-->
+
+<!--  function drawGeom(g) {-->
+<!--    let geomType = g.getGeometryType();-->
+<!--    if (geomType === 'MultiLineString') {-->
+<!--      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {-->
+<!--        drawGeom(g.getGeometryN(i));-->
+<!--      }-->
+<!--    } else if (geomType === 'LineString' || geomType === 'LinearRing') {-->
+<!--      beginShape();-->
+<!--      for (let i = 0, n = g.getNumPoints(); i < n; i++) {-->
+<!--        const p = g.getPointN(i);-->
+<!--        vertex(p.getX(), p.getY());-->
+<!--      }-->
+<!--      endShape();-->
+<!--    } else if (geomType === 'Polygon') {-->
+<!--      const shell = g.getExteriorRing();-->
+<!--      beginShape();-->
+<!--      for (let i = 0, n = shell.getNumPoints(); i < n; i++) {-->
+<!--        const p = shell.getPointN(i);-->
+<!--        vertex(p.getX(), p.getY());-->
+<!--      }-->
+<!--      for (let i = 0, n = g.getNumInteriorRing(); i < n; i++) {-->
+<!--        const hole = g.getInteriorRingN(i);-->
+<!--        beginContour();-->
+<!--        for (let j = 0, m = hole.getNumPoints(); j < m; j++) {-->
+<!--          const p = hole.getPointN(j);-->
+<!--          vertex(p.getX(), p.getY());-->
+<!--        }-->
+<!--        endContour(CLOSE);-->
+<!--      }-->
+<!--      endShape(CLOSE);-->
+<!--    } else if (geomType === 'GeometryCollection') {-->
+<!--      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {-->
+<!--        drawGeom(g.getGeometryN(i));-->
+<!--      }-->
+<!--    } else if (geomType === 'Point') {-->
+<!--      const coord = g.getCoordinate();-->
+<!--      circle(coord.x, coord.y, 5);-->
+<!--    } else if (geomType === 'MultiPolygon') {-->
+<!--      for (let i = 0, n = g.getNumGeometries(); i < n; i++) {-->
+<!--        drawGeom(g.getGeometryN(i));-->
+<!--      }-->
+<!--    }-->
+<!--    else {-->
+<!--      console.log(`Unrecognized Geometry Type: ${geomType}`);-->
+<!--    }-->
+<!--  }-->
+
+<!--</script>-->
 </body>
 </html>
