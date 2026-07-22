@@ -724,17 +724,23 @@ export class BCDFill implements IRun {
     };
 
     // The free region: initially the whole polygon; after each seal, the
-    // union of the still-unfilled cells. The medial-axis finder over it is
-    // built LAZILY — the straight-line and boundary shortcuts in route()
-    // satisfy most travel legs, and a finder that is never asked for a path
-    // skips its whole CGAL construction, the dominant planning cost.
-    let finderRings: Array<Array<[number, number]>> = this.rings.map((r) =>
-      r.map((p) => [p.x, p.y] as [number, number]),
-    );
+    // union of the still-unfilled cells. `regionRings` drives the geometric
+    // shortcuts in route() (straight-clear, boundary walk); the medial-axis
+    // finder is the expensive fallback, consulted only when both shortcuts
+    // fail. That finder is built LAZILY and, crucially, over just the LOCAL
+    // CORRIDOR of unfilled cells linking pos to target — not the whole
+    // remaining union. A CGAL build's cost scales with its boundary vertex
+    // count, and a corridor is a tiny slice of the shape, so a routed leg
+    // costs milliseconds instead of a full-shape rebuild (the dominant
+    // planning cost). See getCorridorFinder below.
     let regionRings: Pt[][] = this.rings.map((r) => r.map((p) => ({ ...p })));
-    let finder: MedialAxisPathFinder | null = null;
-    const getFinder = (): MedialAxisPathFinder =>
-      (finder ??= new MedialAxisPathFinder(finderRings));
+    let corridor: { cells: Set<number>; finder: MedialAxisPathFinder } | null = null;
+    const disposeCorridor = () => {
+      if (corridor) {
+        corridor.finder.dispose();
+        corridor = null;
+      }
+    };
 
     const locate = (pt: Pt): number => {
       for (let i = 0; i < faces.length; i++) if (pointInRing(pt, faces[i])) return i;
@@ -750,6 +756,95 @@ export class BCDFill implements IRun {
         }
       }
       return best;
+    };
+
+    // Locate the still-UNFILLED cell containing (or nearest to) a point. The
+    // corridor endpoints must be unfilled: pos routinely sits on a portal of
+    // the cell just sealed, whose ring is still the nearest, and plain locate()
+    // would hand back that filled cell.
+    const locateUnfilled = (pt: Pt): number => {
+      for (let i = 0; i < faces.length; i++)
+        if (!filled.has(i) && pointInRing(pt, faces[i])) return i;
+      let best = -1,
+        bd = Infinity;
+      for (let i = 0; i < faces.length; i++) {
+        if (filled.has(i)) continue;
+        const d = nearestEdge(faces[i], pt).d;
+        if (d < bd) {
+          bd = d;
+          best = i;
+        }
+      }
+      return best;
+    };
+
+    // Shortest chain of still-unfilled cells from `from` to `to` over the cell
+    // adjacency graph (Dijkstra on centroid distance; the graph is small, so a
+    // linear-scan frontier is fine). The wet-paint invariant keeps the unfilled
+    // region connected, so a chain always exists; null only guards the
+    // degenerate disconnected case, where the caller falls back to a straight
+    // leg.
+    const cellPath = (from: number, to: number): number[] | null => {
+      if (from < 0 || to < 0) return null;
+      if (from === to) return [from];
+      const best = new Map<number, number>([[from, 0]]);
+      const prev = new Map<number, number>();
+      const done = new Set<number>();
+      for (;;) {
+        let u = -1,
+          du = Infinity;
+        for (const [c, d] of best)
+          if (!done.has(c) && d < du) {
+            du = d;
+            u = c;
+          }
+        if (u < 0 || u === to) break;
+        done.add(u);
+        for (const v of adjacency[u]) {
+          if (filled.has(v) || done.has(v)) continue;
+          const w = du + dist(centers[u], centers[v]);
+          if (w < (best.get(v) ?? Infinity)) {
+            best.set(v, w);
+            prev.set(v, u);
+          }
+        }
+      }
+      if (!best.has(to)) return null;
+      const path: number[] = [to];
+      for (let c = to; c !== from; ) {
+        const p = prev.get(c);
+        if (p === undefined) return null;
+        path.push(p);
+        c = p;
+      }
+      return path.reverse();
+    };
+
+    // Medial-axis finder over the LOCAL corridor linking `from` to `to`: the
+    // shortest unfilled cell chain, dilated by one ring of unfilled neighbours
+    // so the axis has lateral room to stay off the walls. Cached and reused
+    // while both leg endpoints remain inside it (seal() drops the cache when
+    // one of its cells fills). Returns null when no corridor exists.
+    const getCorridorFinder = (from: Pt, to: Pt): MedialAxisPathFinder | null => {
+      const cf = locateUnfilled(from),
+        ct = locateUnfilled(to);
+      if (cf < 0 || ct < 0) return null;
+      if (corridor && corridor.cells.has(cf) && corridor.cells.has(ct)) {
+        return corridor.finder;
+      }
+      const path = cellPath(cf, ct);
+      if (!path) return null;
+      const cells = new Set<number>(path);
+      for (const c of path)
+        for (const nb of adjacency[c]) if (!filled.has(nb)) cells.add(nb);
+      const rings = unionRings(
+        [...cells].map((i) => faces[i]),
+        diag,
+      );
+      disposeCorridor();
+      const built = new MedialAxisPathFinder(rings);
+      corridor = { cells, finder: built };
+      return built;
     };
 
     // The tour's endpoints live on the border (they are entry/exit points of
@@ -1037,7 +1132,10 @@ export class BCDFill implements IRun {
         pushTravel(bw, true);
         return;
       }
-      const r = getFinder().findPath(pos, target);
+      const cfinder = getCorridorFinder(pos, target);
+      const r: { found: boolean; path: Pt[] } = cfinder
+        ? cfinder.findPath(pos, target)
+        : { found: false, path: [] };
       if (bw && !r.found) {
         pushTravel(bw, true);
         return;
@@ -1132,13 +1230,13 @@ export class BCDFill implements IRun {
       steps.push({ type: 'seal', cell: c, walls });
       if (filled.size < faces.length) {
         const remaining = faces.filter((_, i) => !filled.has(i));
-        finderRings = unionRings(remaining, diag);
-        regionRings = finderRings.map((r) => r.map(([x, y]) => ({ x, y })));
-        if (finder) {
-          finder.dispose();
-          finder = null; // rebuilt lazily, only if a leg actually needs it
-        }
+        regionRings = unionRings(remaining, diag).map((r) =>
+          r.map(([x, y]) => ({ x, y })),
+        );
       }
+      // A cached corridor spanning the just-sealed cell would now route through
+      // filled ground; drop it so the next routed leg rebuilds a fresh one.
+      if (corridor && corridor.cells.has(c)) disposeCorridor();
     };
 
     // A cell's fill path is fully determined by its exit point (lanes come
@@ -1769,7 +1867,7 @@ export class BCDFill implements IRun {
         }
       }
     } finally {
-      if (finder) finder.dispose();
+      disposeCorridor();
     }
 
     const plan: BCDFillPlan = {

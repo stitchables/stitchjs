@@ -75,9 +75,10 @@ export class RoutedFill implements IRoutedRun {
     this.stitchLengthMm = options?.stitchLengthMm ?? 3;
     this.travelLengthMm = options?.travelLengthMm ?? 4;
     this.travelToleranceMm = options?.travelToleranceMm ?? 0.1;
-    this.centerPoint = options?.centerPosition !== undefined
-      ? geometryFactory.createPoint(options.centerPosition.x, options.centerPosition.y)
-      : undefined;
+    this.centerPoint =
+      options?.centerPosition !== undefined
+        ? geometryFactory.createPoint(options.centerPosition.x, options.centerPosition.y)
+        : undefined;
     this.fillPattern = options?.fillPattern ?? [
       { rowOffsetMm: 0, rowPatternMm: [this.stitchLengthMm] },
       { rowOffsetMm: 0.33 * this.stitchLengthMm, rowPatternMm: [this.stitchLengthMm] },
@@ -200,11 +201,13 @@ export class RoutedFill implements IRoutedRun {
         entry: options?.entry
           ? new Vector(options?.entry.x, options?.entry.y)
           : undefined,
-        exit: options?.entry ? new Vector(options?.entry.x, options?.entry.y) : undefined,
+        exit: options?.exit ? new Vector(options?.exit.x, options?.exit.y) : undefined,
         angle: this.angle,
         rowSpacingMm: this.rowSpacingMm,
         fillPattern: this.fillPattern,
-        fillPatternCenterPosition: this.centerPoint ? new Vector(this.centerPoint.getX(), this.centerPoint.getY()) : undefined,
+        fillPatternCenterPosition: this.centerPoint
+          ? new Vector(this.centerPoint.getX(), this.centerPoint.getY())
+          : undefined,
         travelStitchLengthMm: this.travelLengthMm,
         travelStitchToleranceMm: this.travelToleranceMm,
         gradient: this.gradient,

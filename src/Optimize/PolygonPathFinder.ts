@@ -34,21 +34,22 @@ export default class PolygonPathFinder {
   pathFinder: IPolygonPathFinder;
   constructor(polygon: Polygon) {
     const prepPoly = TopologyPreservingSimplifier.simplify(polygon, 1);
+    this.pathFinder = new MATPolygonPathFinder(prepPoly);
     // const prepPoly = GeometryPrecisionReducer.reduce(TopologyPreservingSimplifier.simplify(polygon, 0.1), new PrecisionModel(10));
-    const skeletonPathFinder = SkeletonPolygonPathFinder.fromPolygon(prepPoly);
-    if (skeletonPathFinder !== undefined) this.pathFinder = skeletonPathFinder;
-    else {
-      console.log('skeleton failed, falling back to MAT');
-      console.log(prepPoly);
-      const writer = new GeoJSONWriter();
-      console.log(JSON.stringify(writer.write(prepPoly)));
-      const matPathFinder = MATPolygonPathFinder.fromPolygon(prepPoly);
-      if (matPathFinder instanceof MATPolygonPathFinder) this.pathFinder = matPathFinder;
-      else {
-        console.log('MAT failed, falling back to NavMesh');
-        this.pathFinder = new NavMeshPolygonPathFinder(prepPoly, matPathFinder);
-      }
-    }
+    // const skeletonPathFinder = SkeletonPolygonPathFinder.fromPolygon(prepPoly);
+    // if (skeletonPathFinder !== undefined) this.pathFinder = skeletonPathFinder;
+    // else {
+    //   console.log('skeleton failed, falling back to MAT');
+    //   console.log(prepPoly);
+    //   const writer = new GeoJSONWriter();
+    //   console.log(JSON.stringify(writer.write(prepPoly)));
+    //   const matPathFinder = new MATPolygonPathFinder(prepPoly);
+    //   if (matPathFinder instanceof MATPolygonPathFinder) this.pathFinder = matPathFinder;
+    //   else {
+    //     console.log('MAT failed, falling back to NavMesh');
+    //     this.pathFinder = new NavMeshPolygonPathFinder(prepPoly, matPathFinder);
+    //   }
+    // }
   }
   findPath(start: PathFinderGeometry, end: PathFinderGeometry): LineString {
     return this.pathFinder.findPath(start, end);

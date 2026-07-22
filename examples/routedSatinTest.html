@@ -199,7 +199,7 @@
       const out = q.normalized().multiply(0.1).rotate(map(noise(p[0] / 7, p[1] / 7), 0, 1, 0, 2 * Math.PI));
       return [out.x, out.y];
     };
-    let sf = function(p) { return 0.8; }
+    let sf = function(p) { return 0.3; }
     let dsf = function(p) { return 0.5; }
     let ess = new ESS([10, 10], vf, sf, dsf);
     for (let x = 0; x <= 10; x += 1) {
@@ -214,7 +214,7 @@
       if (sl.length > 3) {
         const satinVertices = [];
         for (let i = 1; i < sl.length - 1; i++) {
-          const ppMm = 20;
+          const ppMm = 5;
           let prev = new Stitch.Math.Vector(80 * sl[i - 1].x, 80 * sl[i - 1].y);
           let curr = new Stitch.Math.Vector(80 * sl[i - 0].x, 80 * sl[i - 0].y);
           let next = new Stitch.Math.Vector(80 * sl[i + 1].x, 80 * sl[i + 1].y);
@@ -233,15 +233,15 @@
         routedSatins.push(routedSatin);
         shapes.push(routedSatin.getShape());
 
-        let pattern = new Stitch.Core.Pattern(800, 800);
-        let thread = pattern.addThread(200, 0, 0);
-        thread.addRun(new Stitch.Core.RoutedRuns.AutoRoute(routedSatins));
-        stitchPlan = pattern.getStitchPlan(800, 800, 10);
         // const classicSatin = new Stitch.Core.Runs.ClassicSatin(satinVertices, 0.8, 3, startPosition, endPosition);
         // thread.addRun(classicSatin);
         // satinBlocks.push(classicSatin);
       }
     }
+    let pattern = new Stitch.Core.Pattern(800, 800);
+    let thread = pattern.addThread(200, 0, 0);
+    thread.addRun(new Stitch.Core.RoutedRuns.AutoRoute(routedSatins));
+    stitchPlan = pattern.getStitchPlan(800, 800, 10);
 
     // const v = (p) => {
     //   return { x: 2 * p.x, y: Math.sin((p.x + Math.hypot(p.x, p.y))) };

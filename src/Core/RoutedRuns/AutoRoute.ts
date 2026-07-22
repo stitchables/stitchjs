@@ -19,6 +19,7 @@ import DisjointSet from '../../Optimize/DisjointSet';
 import { resample } from '../../Geometry/resample';
 import { StitchType } from '../EStitchType';
 import MinimumSpanningTree from '../../Optimize/MinimumSpanningTree';
+import { geometryMst } from '../../Geometry/geometryMst';
 
 class DisjointSetItemDistance {
   disjointSet: DisjointSet;
@@ -411,17 +412,19 @@ export class AutoRoute implements IRun {
     componentTree.build();
 
     // build the minimum spanning tree of the component graph
-    const itemDistance = new DisjointSetItemDistance(this.graph.nodes());
-    while (!itemDistance.disjointSet.isFullyConnected()) {
-      const [p, q] = componentTree.nearestNeighbour(itemDistance);
-      const [pCoord, qCoord] = DistanceOp.nearestPoints(p.geometry, q.geometry);
-      const label = {
-        p: { nodeId: p.nodeId, point: geometryFactory.createPoint(pCoord) },
-        q: { nodeId: q.nodeId, point: geometryFactory.createPoint(qCoord) },
-        weight: pCoord.distance(qCoord),
+    const nodeLookup = this.graph.nodes();
+    const jumps = geometryMst(nodeLookup.map((n) => this.graph.node(n).freeSpace));
+    for (const { a, b } of jumps.edges) {
+      const p = {
+        nodeId: nodeLookup[a.index],
+        point: geometryFactory.createPoint(a.location.getCoordinate()),
       };
-      this.graph.setEdge(p.nodeId, q.nodeId, label);
-      itemDistance.disjointSet.union(p.nodeId, q.nodeId);
+      const q = {
+        nodeId: nodeLookup[b.index],
+        point: geometryFactory.createPoint(b.location.getCoordinate()),
+      };
+      const label = { p, q, weight: p.point.distance(q.point) };
+      this.graph.setEdge(nodeLookup[a.index], nodeLookup[b.index], label);
     }
 
     const geometryItemDistance = new GeometryItemDistance();

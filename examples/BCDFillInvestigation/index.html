@@ -1,0 +1,177 @@
+<!doctype html>
+<html>
+<head>
+  <title>BCDFill Example</title>
+  <script src="../../dist/stitch.global.js"></script>
+  <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
+</head>
+<body>
+<input id="angleSlider" type="range" min="0" max="3.14159" value="0" step="0.01" style="position: relative; z-index: 999;">
+<div style="position: fixed; left: 0; right: 0; bottom: 10px; z-index: 999; display: flex; gap: 10px; align-items: center; padding: 0 20px;">
+  <input id="stitchSlider" type="range" min="0" max="0" value="0" step="1" style="flex: 1;">
+  <span id="stitchReadout" style="font: 13px monospace; background: rgba(255,255,255,0.8); padding: 2px 6px;"></span>
+</div>
+<script type="module">
+
+  const angleSlider = document.getElementById("angleSlider");
+  const stitchSlider = document.getElementById("stitchSlider");
+  const stitchReadout = document.getElementById("stitchReadout");
+
+  let polygon;
+  Stitch.init().then(() => fetch("./polygon.json").then(f => {
+    f.json().then(json => {
+      const boundingBox = { xMin: Infinity, xMax: -Infinity, yMin: Infinity, yMax: -Infinity };
+      for (const v of json.shell) {
+        if (v.x < boundingBox.xMin) boundingBox.xMin = v.x;
+        if (v.x > boundingBox.xMax) boundingBox.xMax = v.x;
+        if (v.y < boundingBox.yMin) boundingBox.yMin = v.y;
+        if (v.y > boundingBox.yMin) boundingBox.yMax = v.y;
+      }
+      const rings = [json.shell.map(v => [v.x, v.y]), ...json.holes.map(h => h.map(v => [v.x, v.y]))];
+      polygon = { boundingBox, rings };
+      createPattern();
+    });
+  }));
+
+  let pattern = null, canvas = null, modal = null;
+  function createPattern() {
+    const padding = 25;
+    const width = polygon.boundingBox.xMax - polygon.boundingBox.xMin + 2 * padding;
+    const height = polygon.boundingBox.yMax - polygon.boundingBox.yMin + 2 * padding;
+    pattern = new Stitch.Core.Pattern(width, height);
+    const debug = pattern.addThread(255, 0, 0);
+    const thread = pattern.addThread(0, 0, 0);
+
+    const xOffset = polygon.boundingBox.xMin - padding;
+    const yOffset = polygon.boundingBox.yMin - padding;
+    const rings = polygon.rings.map(ring => {
+      const vectors = ring.map(p => new Stitch.Math.Vector(p[0] - xOffset, p[1] - yOffset));
+      vectors.push(vectors[0]);
+      return vectors;
+    });
+    for (const ring of rings) debug.addRun(new Stitch.Core.Runs.Run(ring, { stitchToleranceMm: 0.01 }));
+
+    const bcdFill = new Stitch.Core.Runs.BCDFill({
+      shell: rings[0],
+      holes: rings.slice(1)
+    });
+    thread.addRun(bcdFill);
+
+    rebuildCanvases();
+    stitchSlider.max = segments.length;
+    stitchSlider.value = segments.length;
+    scrubTo(segments.length);
+
+    if (modal) modal.container.remove();
+    modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'BCDFillInvestigation', 10, 500);
+    document.body.appendChild(modal.container);
+  }
+
+  // --- stitch-out scrubber: mirrors Stitch.Graphics.getCanvas, but draws only
+  // the first N segments so the stitch-out order can be inspected. ---
+  const rgbToHex = (r, g, b) =>
+    '#' + [r, g, b].map(v => Math.round(v).toString(16).padStart(2, '0')).join('');
+  function shadeColor(color, percent) {
+    const num = parseInt(color.slice(1), 16);
+    const amt = Math.round(2.55 * percent);
+    const clamp = (v) => v < 1 ? 0 : v > 255 ? 255 : v;
+    const r = clamp((num >> 16) + amt);
+    const g = clamp(((num >> 8) & 0xff) + amt);
+    const b = clamp((num & 0xff) + amt);
+    return '#' + (0x1000000 + r * 0x10000 + g * 0x100 + b).toString(16).slice(1);
+  }
+
+  let segments = [], drawnCount = 0, ctx = null, overlay = null, overlayCtx = null;
+
+  function rebuildCanvases() {
+    const widthPx = window.innerWidth, heightPx = window.innerHeight, pixelMultiplier = 5;
+    const start = performance.now();
+    const plan = pattern.getStitchPlan(widthPx, heightPx, pixelMultiplier);
+    console.log(`getStitchPlan: ${performance.now() - start}ms`);
+    const scale = pixelMultiplier / plan.pixelsPerUnit;
+    const tx = 0.5 * (widthPx - plan.width);
+    const ty = 0.5 * (heightPx - plan.height);
+    segments = [];
+    for (const t of plan.threads) {
+      const hexColor = rgbToHex(t.thread.red, t.thread.green, t.thread.blue);
+      const endColor = shadeColor(hexColor, -60);
+      const midColor = shadeColor(hexColor, 60);
+      for (const r of t.runs) {
+        for (let i = 1; i < r.length; i++) {
+          segments.push({
+            x1: r[i - 1].position.x * scale + tx, y1: r[i - 1].position.y * scale + ty,
+            x2: r[i].position.x * scale + tx, y2: r[i].position.y * scale + ty,
+            hexColor, endColor, midColor,
+          });
+        }
+      }
+    }
+    if (canvas) canvas.remove();
+    if (overlay) overlay.remove();
+    const style = 'margin: auto; position: absolute; inset: 0;';
+    canvas = document.createElement('canvas');
+    [canvas.width, canvas.height] = [widthPx, heightPx];
+    canvas.setAttribute('style', style);
+    ctx = canvas.getContext('2d');
+    [ctx.lineWidth, ctx.lineJoin] = [1.5, 'round'];
+    overlay = document.createElement('canvas');
+    [overlay.width, overlay.height] = [widthPx, heightPx];
+    overlay.setAttribute('style', style);
+    overlayCtx = overlay.getContext('2d');
+    document.body.append(canvas, overlay);
+    drawnCount = 0;
+  }
+
+  function drawSegments(from, to) {
+    for (let i = from; i < to; i++) {
+      const s = segments[i];
+      const gWidth = Math.hypot(s.x2 - s.x1, s.y2 - s.y1);
+      const gradient = ctx.createRadialGradient(s.x1, s.y1, 0, s.x1, s.y1, gWidth);
+      gradient.addColorStop(0, s.endColor);
+      gradient.addColorStop(0.05, s.hexColor);
+      gradient.addColorStop(0.5, s.midColor);
+      gradient.addColorStop(0.9, s.hexColor);
+      gradient.addColorStop(1.0, s.endColor);
+      ctx.strokeStyle = gradient;
+      ctx.beginPath();
+      ctx.moveTo(s.x1, s.y1);
+      ctx.lineTo(s.x2, s.y2);
+      ctx.stroke();
+    }
+  }
+
+  function scrubTo(n) {
+    n = Math.max(0, Math.min(segments.length, n));
+    if (n < drawnCount) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      drawnCount = 0;
+    }
+    drawSegments(drawnCount, n);
+    drawnCount = n;
+    overlayCtx.clearRect(0, 0, overlay.width, overlay.height);
+    if (n > 0) {
+      const s = segments[n - 1];
+      overlayCtx.strokeStyle = '#e00';
+      overlayCtx.lineWidth = 1.5;
+      overlayCtx.beginPath();
+      overlayCtx.arc(s.x2, s.y2, 6, 0, 2 * Math.PI);
+      overlayCtx.stroke();
+    }
+    stitchReadout.textContent = `${n} / ${segments.length}`;
+  }
+
+  stitchSlider.addEventListener("input", () => scrubTo(parseInt(stitchSlider.value, 10)));
+
+  angleSlider.addEventListener("change", () => createPattern());
+
+  window.addEventListener('click', (e) => { if (modal && e.target === modal.container) modal.close(); });
+  window.addEventListener('keydown', (e) => { if (modal && e.code === 'KeyD') modal.open(); });
+  window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
+    const n = parseInt(stitchSlider.value, 10);
+    rebuildCanvases();
+    stitchSlider.max = segments.length;
+    scrubTo(Math.min(n, segments.length));
+  }, 10));
+</script>
+</body>
+</html>

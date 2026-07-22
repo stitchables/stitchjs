@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+  <script src="../dist/stitch.global.js"></script>
+  <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
+  <script src="https://cdn.jsdelivr.net/npm/p5@2.3.0/lib/p5.js"></script>
+  <script src="https://unpkg.com/jsts@2.12.1/dist/jsts.min.js"></script>
+  <meta charset="utf-8">
+</head>
+<body>
+  <script>
+    console.log(jsts);
+    let polygonSelector, polygons, pathFinder, path, start, end;
+    let stitches;
+    let counter = 0;
+
+    const circlePoints = (x, y, r, segments = 10) => {
+      const points = Array.from({ length: segments }, (_, i) => {
+        const angle = (i / segments) * Math.PI * 2;
+        return new Stitch.Math.Vector(
+          x + Math.cos(angle) * r,
+          y + Math.sin(angle) * r,
+        );
+      });
+      return [...points, points[0]];
+    }
+
+    function handleChange() {
+      const { boundingBox, rings } = polygons[polygonSelector.value()];
+      const bb = fitBoxInsideCanvas(boundingBox);
+      const linearRings = rings.map(ring => {
+        const coords = ring.map(p => {
+          const x = map(p[0], boundingBox.xMin, boundingBox.xMax, bb.x, bb.x + bb.width);
+          const y = map(p[1], boundingBox.yMin, boundingBox.yMax, bb.y, bb.y + bb.height);
+          return new Stitch.Math.Vector(x, y);
+        });
+        return [...coords, coords[0]];
+      });
+      const polygon = Stitch.Geometry.createPolygon(linearRings[0], linearRings.slice(1));
+
+      const startCoord = random(linearRings[0]);
+      start = [startCoord.x, startCoord.y];
+      let endCoord = random(linearRings[0]);
+      while (endCoord === startCoord) {
+        endCoord = random(linearRings[0]);
+      }
+      end = [endCoord.x, endCoord.y];
+
+      // const startIndex = floor(random(linearRings[0].getNumPoints() - 1));
+      // const start1 = linearRings[0].getCoordinateN(startIndex);
+      // const start2 = linearRings[0].getCoordinateN(startIndex + 1);
+      // start = [0.5 * (start1.x + start2.x), 0.5 * (start1.y + start2.y)];
+      // let endIndex = floor(random(linearRings[0].getNumPoints() - 1));
+      // while (endIndex === startIndex) {
+      //   endIndex = floor(random(linearRings[0].getNumPoints() - 1));
+      // }
+      // const end1 = linearRings[0].getCoordinateN(endIndex);
+      // const end2 = linearRings[0].getCoordinateN(endIndex + 1);
+      // end = [0.5 * (end1.x + end2.x), 0.5 * (end1.y + end2.y)];
+
+
+      pathFinder = new Stitch.Optimize.MATPolygonPathFinder(polygon);
+      path = pathFinder.findPath(
+        Stitch.Geometry.createPolygon(circlePoints(start[0], start[1], 5)),
+        Stitch.Geometry.createPolygon(circlePoints(end[0], end[1], 5)),
+      );
+
+      const routedFill = new Stitch.Core.RoutedRuns.RoutedFill(
+        { shell: linearRings[0], holes: linearRings.slice(1) },
+        {
+          angle: 0.25 * Math.PI,
+          underlays: [{
+            rowSpacingMm: 0.2,
+            insetMm: 2.5,
+          }]
+        },
+      );
+      const autoRoute = new Stitch.Core.RoutedRuns.AutoRoute([routedFill], {
+        entry: new Stitch.Math.Vector(0, 0),
+        exit: new Stitch.Math.Vector(width, height),
+      });
+      stitches = autoRoute.getStitches(10);
+    }
+
+    async function setup() {
+      await Stitch.init();
+      polygonSelector = createSelect();
+      polygonSelector.changed(handleChange);
+      createCanvas(800, 800);
+      polygons = {};
+      await fetch("./polygons.json").then(f => {
+        f.json().then(json => {
+          for (const { id, label, boundingBox, rings } of json.polygons) {
+            polygons[id] = { boundingBox, rings };
+            polygonSelector.option(id);
+          }
+          polygonSelector.selected('gray-embroidery');
+          // polygonSelector.selected('square');
+          handleChange();
+        });
+      });
+    }
+
+    async function draw() {
+      background(220);
+
+
+      push();
+      stroke(0);
+      fill(255, 150);
+      drawGeom(pathFinder.polygon);
+      pop();
+
+      // push();
+      // noFill();
+      // for (const { location, geometry } of Object.values(debug.edgeMap)) {
+      //   if (location === "interior") stroke(0);
+      //   else stroke(255, 0, 0);
+      //   drawGeom(geometry);
+      // }
+      // pop();
+
+      // // 52, 95, 195
+      // push();
+      // noFill();
+      // stroke(0);
+      // const faceCount = debug.voronoiFaces.length;
+      // const faceIndex = ((counter % faceCount) + faceCount) % faceCount;
+      // text(faceIndex, 20, 20);
+      // for (const edge of debug.voronoiFaces[faceIndex]) {
+      //   drawGeom(edge);
+      // }
+      // pop();
+
+      push();
+      stroke(0);
+      fill(0, 255, 0);
+      circle(start[0], start[1], 10);
+      fill(255, 0, 0);
+      circle(end[0], end[1], 10);
+      pop();
+
+      push();
+      stroke(255, 0, 0);
+      noFill();
+      drawGeom(path);
+      pop();
+
+      push();
+      stroke(0, 100);
+      noFill();
+      beginShape();
+      for (let i = 0; i < map(mouseX, 0.05 * width, 0.95 * width, 0, stitches.length - 1, true); i++) {
+        vertex(stitches[i].position.x, stitches[i].position.y);
+      }
+      endShape();
+      pop();
+    }
+
+    function keyPressed() {
+      if (key === "ArrowLeft") {
+        counter--;
+      } else if (key === "ArrowRight") {
+        counter++;
+      } else {
+        console.log(key);
+      }
+    }
+
+    let selected = null;
+    function mousePressed() {
+      if (Math.hypot(start[0] - mouseX, start[1] - mouseY) < 15) {
+        selected = "start";
+      } else if (Math.hypot(end[0] - mouseX, end[1] - mouseY) < 15) {
+        selected = "end";
+      }
+    }
+
+    function mouseDragged() {
+      if (selected !== null) {
+        if (selected === "start") start = [mouseX, mouseY];
+        else if (selected === "end") end = [mouseX, mouseY];
+        path = pathFinder.findPath(
+          Stitch.Geometry.createPolygon(circlePoints(start[0], start[1], 5)),
+          Stitch.Geometry.createPolygon(circlePoints(end[0], end[1], 5)),
+        );
+      }
+    }
+
+    function mouseReleased() {
+      selected = null;
+    }
+
+    function fitBoxInsideCanvas(bb) {
+      const bbWidth = bb.xMax - bb.xMin;
+      const bbHeight = bb.yMax - bb.yMin;
+
+      // 1. Calculate the center of the outer box
+      const outerCenterX = 20 + (width - 40) / 2;
+      const outerCenterY = 20 + (height - 40) / 2;
+
+      // 2. Calculate the scale factor to maintain aspect ratio
+      const scaleX = (width - 40) / bbWidth;
+      const scaleY = (height - 40) / bbHeight;
+      const minScale = Math.min(scaleX, scaleY);
+
+      // 3. Compute the dimensions and position of the fitted inner box
+      const fittedWidth = bbWidth * minScale;
+      const fittedHeight = bbHeight * minScale;
+
+      const fittedX = outerCenterX - fittedWidth / 2;
+      const fittedY = outerCenterY - fittedHeight / 2;
+
+      return {
+        x: fittedX,
+        y: fittedY,
+        width: fittedWidth,
+        height: fittedHeight,
+        scale: minScale
+      };
+    }
+
+    function drawGeom(g) {
+      let geomType = g.getGeometryType();
+      if (geomType === 'MultiLineString') {
+        for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+          drawGeom(g.getGeometryN(i));
+        }
+      } else if (geomType === 'LineString' || geomType === 'LinearRing') {
+        beginShape();
+        for (let i = 0, n = g.getNumPoints(); i < n; i++) {
+          const p = g.getPointN(i);
+          vertex(p.getX(), p.getY());
+        }
+        endShape();
+      } else if (geomType === 'Polygon') {
+        const shell = g.getExteriorRing();
+        beginShape();
+        for (let i = 0, n = shell.getNumPoints(); i < n; i++) {
+          const p = shell.getPointN(i);
+          vertex(p.getX(), p.getY());
+        }
+        for (let i = 0, n = g.getNumInteriorRing(); i < n; i++) {
+          const hole = g.getInteriorRingN(i);
+          beginContour();
+          for (let j = 0, m = hole.getNumPoints(); j < m; j++) {
+            const p = hole.getPointN(j);
+            vertex(p.getX(), p.getY());
+          }
+          endContour(CLOSE);
+        }
+        endShape(CLOSE);
+      } else if (geomType === 'GeometryCollection') {
+        for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+          drawGeom(g.getGeometryN(i));
+        }
+      } else if (geomType === 'Point') {
+        const coord = g.getCoordinate();
+        circle(coord.x, coord.y, 5);
+      } else if (geomType === 'MultiPolygon') {
+        for (let i = 0, n = g.getNumGeometries(); i < n; i++) {
+          drawGeom(g.getGeometryN(i));
+        }
+      }
+      else {
+        console.log(`Unrecognized Geometry Type: ${geomType}`);
+      }
+    }
+  </script>
+</body>
+</html>

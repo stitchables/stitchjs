@@ -1,217 +1,481 @@
-import {
-  Coordinate,
-  Point,
-  Location,
-  MultiPoint,
-  LineString,
-  Envelope,
-  Polygon,
-  GeometryCollection,
-} from 'jsts/org/locationtech/jts/geom';
-import VoronoiDiagramBuilder from 'jsts/org/locationtech/jts/triangulate/VoronoiDiagramBuilder';
-import IndexedPointInAreaLocator from 'jsts/org/locationtech/jts/algorithm/locate/IndexedPointInAreaLocator';
-import IndexedFacetDistance from 'jsts/org/locationtech/jts/operation/distance/IndexedFacetDistance';
-import { STRtree } from 'jsts/org/locationtech/jts/index/strtree';
-import ItemBoundable from 'jsts/org/locationtech/jts/index/strtree/ItemBoundable';
-import OverlayOp from 'jsts/org/locationtech/jts/operation/overlay/OverlayOp';
-import RelateOp from 'jsts/org/locationtech/jts/operation/relate/RelateOp';
-import Densifier from 'jsts/org/locationtech/jts/densify/Densifier';
-import * as graphlib from '@dagrejs/graphlib';
+import { IPolygonPathFinder } from './PolygonPathFinder';
+import { Coordinate, Point, LineString, Polygon } from 'jsts/org/locationtech/jts/geom';
+import { tessellate, voronoi, VoronoiEdge } from 'voron8';
 import { geometryFactory } from '../util/jsts';
-import { Vector } from '../Math/Vector';
-import { resample } from '../Geometry/resample';
-import { IPolygonPathFinder, PathFinderGeometry } from './PolygonPathFinder';
+import * as graphlib from '@dagrejs/graphlib';
+import STRtree from 'jsts/org/locationtech/jts/index/strtree/STRtree';
+import LinearComponentExtracter from 'jsts/org/locationtech/jts/geom/util/LinearComponentExtracter';
+import RelateOp from 'jsts/org/locationtech/jts/operation/relate/RelateOp';
+import DistanceOp from 'jsts/org/locationtech/jts/operation/distance/DistanceOp';
+import OverlayOp from 'jsts/org/locationtech/jts/operation/overlay/OverlayOp';
+import GeometryLocation from 'jsts/org/locationtech/jts/operation/distance/GeometryLocation';
+import TopologyPreservingSimplifier from 'jsts/org/locationtech/jts/simplify/TopologyPreservingSimplifier';
 
-class GeometryItemDistance {
-  distance(item1: ItemBoundable, item2: ItemBoundable) {
-    return item1.getItem().geometry.distance(item2.getItem().geometry);
-  }
-}
-
-// Approximating skeleton with the medial axis
 export default class MATPolygonPathFinder implements IPolygonPathFinder {
   polygon: Polygon;
-  locator: IndexedPointInAreaLocator;
-  indexedFacetDistance: IndexedFacetDistance;
-  spineGraph: graphlib.Graph<null, Coordinate, number>;
-  spinePaths: Record<string, Record<string, graphlib.Path>>;
+  spineGraph: graphlib.Graph<
+    null,
+    Point,
+    { geometry: LineString; weight: number; from: string; to: string }
+  >;
   spineTree: STRtree;
+  legTree: STRtree;
   cellTree: STRtree;
-  polygons: GeometryCollection;
+  spineDijkstra: Record<string, Record<string, graphlib.Path>>;
   constructor(polygon: Polygon) {
-    this.polygon = polygon;
-    this.indexedFacetDistance = new IndexedFacetDistance(polygon);
-    this.spineGraph = new graphlib.Graph<null, Coordinate, number>({ directed: false });
-    this.spineTree = new STRtree();
-    this.cellTree = new STRtree();
-    this.polygons = geometryFactory.createGeometryCollection();
-    this.locator = new IndexedPointInAreaLocator(polygon);
-    this.spinePaths = {};
-  }
+    // ensure input polygon is free of collinear points
+    this.polygon = TopologyPreservingSimplifier.simplify(polygon, 0.1);
 
-  static fromPolygon(
-    polygon: Polygon,
-    distanceTolerance = 10,
-  ): MATPolygonPathFinder | MultiPoint {
-    const pf = new MATPolygonPathFinder(polygon);
-
-    const vdb = new VoronoiDiagramBuilder();
-    vdb.setClipEnvelope(polygon.getEnvelopeInternal());
-    // vdb.setSites(Densifier.densify(polygon, distanceTolerance));
-    const sites = resample(
-      polygon.getExteriorRing(),
-      distanceTolerance,
-      0,
-    ).getCoordinates();
-    for (let i = 0; i < polygon.getNumInteriorRing(); i++) {
-      sites.push(
-        ...resample(polygon.getInteriorRingN(i), distanceTolerance, 0).getCoordinates(),
+    // prepare the input for voron8
+    const rings = [
+      this.polygon
+        .getExteriorRing()
+        .getCoordinates()
+        .map((c: Coordinate) => [c.x, c.y]),
+    ];
+    for (let i = 0, n = this.polygon.getNumInteriorRing(); i < n; i++) {
+      rings.push(
+        this.polygon
+          .getInteriorRingN(i)
+          .getCoordinates()
+          .map((c: Coordinate) => [c.x, c.y]),
       );
     }
-    vdb.setSites(geometryFactory.createMultiPointFromCoords(sites));
-    const subdivision = vdb.getSubdivision();
 
-    pf.polygons = vdb.getDiagram(geometryFactory);
-    const cells: Record<string, { polygon: Polygon; nodeSet: Set<string> }> = {};
-    for (let i = 0; i < pf.polygons.getNumGeometries(); i++) {
-      const polygon = pf.polygons.getGeometryN(i);
-      const cellId = polygon.getUserData().toString();
-      const nodeSet = new Set<string>();
-      cells[cellId] = { polygon, nodeSet };
-    }
-    const edges = subdivision.getPrimaryEdges(false).toArray();
-    for (const edge of edges) {
-      const [da, db] = [edge.orig(), edge.sym().orig()];
-      const [va, vb] = [edge.rot().orig(), edge.sym().rot().orig()];
-      const [ca, cb] = [va.getCoordinate(), vb.getCoordinate()];
-      const [la, lb] = [pf.locator.locate(ca), pf.locator.locate(cb)];
-      const [sa, sb] = [ca.toString(), cb.toString()];
-      if (la === Location.INTERIOR && lb === Location.INTERIOR) {
-        if (polygon.covers(geometryFactory.createLineString([ca, cb]))) {
-          cells[da.getCoordinate().toString()].nodeSet.add(sa);
-          cells[da.getCoordinate().toString()].nodeSet.add(sb);
-          cells[db.getCoordinate().toString()].nodeSet.add(sa);
-          cells[db.getCoordinate().toString()].nodeSet.add(sb);
-          pf.spineGraph.setNode(sa, ca);
-          pf.spineGraph.setNode(sb, cb);
-          pf.spineGraph.setEdge(sa, sb, ca.distance(cb));
-          const envelope = new Envelope(ca, cb);
-          const geometry = geometryFactory.createLineString([ca, cb]);
-          const nodes = [sa, sb];
-          pf.spineTree.insert(envelope, { nodes, geometry });
-        }
-      }
-    }
-
-    if (graphlib.alg.components(pf.spineGraph).length > 1) {
-      const coords = pf.spineGraph.nodes().map((n) => pf.spineGraph.node(n));
-      return geometryFactory.createMultiPointFromCoords(coords);
-    }
-
-    for (const { polygon, nodeSet } of Object.values(cells)) {
-      if (nodeSet.size > 0) {
-        const envelope = polygon.getEnvelopeInternal();
-        const geometry = polygon;
-        const nodes = Array.from(nodeSet);
-        pf.cellTree.insert(envelope, { geometry, nodes });
-      }
-    }
-
-    pf.spinePaths = graphlib.alg.dijkstraAll(
-      pf.spineGraph,
-      (e) => pf.spineGraph.edge(e),
-      (v) => pf.spineGraph.nodeEdges(v) ?? [],
-    );
-
-    return pf;
-  }
-
-  getAccess(
-    input: PathFinderGeometry,
-    isInterior = false,
-  ): { node: string; coordinate: Coordinate }[] {
-    if (input instanceof Coordinate) {
-      return this.getAccess(geometryFactory.createPoint(input), isInterior);
-    }
-    if (input instanceof Point) {
-      const coordinate = input.getCoordinate();
-      if (!isInterior && this.locator.locate(coordinate) === Location.EXTERIOR) {
-        return this.getAccess(this.indexedFacetDistance.nearestPoints(input)[0], true);
-      }
-      const envelope = new Envelope(coordinate);
-      const item = { geometry: input };
-      const itemDistance = new GeometryItemDistance();
-      const cell = this.cellTree.nearestNeighbour(envelope, item, itemDistance);
-      return cell.nodes.map((node: string) => {
-        return { node, coordinate };
-      });
-    }
-
-    if (!isInterior) {
-      const intersection = OverlayOp.intersection(this.polygon, input);
-      if (intersection.isEmpty()) {
-        return this.getAccess(this.indexedFacetDistance.nearestPoints(input)[0], true);
-      } else {
-        return this.getAccess(intersection, true);
-      }
-    }
-
-    const nodes = new Set<string>();
-    const cells = this.cellTree.query(input.getEnvelopeInternal());
-    for (const cell of cells) {
-      if (RelateOp.intersects(cell.geometry, input)) {
-        for (const node of cell.nodes) {
-          nodes.add(node);
-        }
-      }
-    }
-
-    const inputIFD = new IndexedFacetDistance(input);
-    return Array.from(nodes).map((n) => {
-      const point = geometryFactory.createPoint(this.spineGraph.node(n));
-      return { node: n, coordinate: inputIFD.nearestPoints(point)[0] };
+    // generate the generalized voronoi diagram
+    const voronoiResult = voronoi(rings, {
+      assumeNoIntersections: true,
+      skipIntersectionCheck: true,
     });
-  }
 
-  findPath(start: PathFinderGeometry, end: PathFinderGeometry): LineString {
-    const starts = this.getAccess(start);
-    const ends = this.getAccess(end);
+    // helper util for edge identification
+    const getEdgeId = (e: VoronoiEdge) =>
+      e.from < e.to ? `${e.from},${e.to}` : `${e.to},${e.from}`;
 
-    let startAccess = starts[0];
-    let endAccess = ends[0];
-    let minPathLength = this.spinePaths[startAccess.node][endAccess.node].distance;
-    for (let i = 0; i < starts.length; i++) {
-      for (let j = 0; j < ends.length; j++) {
-        const pathLength = this.spinePaths[starts[i].node][ends[j].node].distance;
-        if (pathLength < minPathLength) {
-          startAccess = starts[i];
-          endAccess = ends[j];
-          minPathLength = pathLength;
+    // voron8 can emit distinct vertex indices at coincident locations (e.g.
+    // where several exterior bisectors meet). The cell walk below threads a
+    // shared-vertex pointer between consecutive boundary edges by vertex index,
+    // so those duplicates break the handoff and cells reconstruct degenerately.
+    // Map each vertex to a canonical index (the first vertex sharing its exact
+    // location) and compare through it. Only the walk's shared-vertex tests use
+    // this; the pushed vertices and spine node ids keep their original indices.
+    const canonicalIndex: number[] = new Array(voronoiResult.vertices.length);
+    const canonicalByKey = new Map<string, number>();
+    voronoiResult.vertices.forEach((v, i) => {
+      const key = `${v.x},${v.y}`;
+      const existing = canonicalByKey.get(key);
+      if (existing === undefined) {
+        canonicalByKey.set(key, i);
+        canonicalIndex[i] = i;
+      } else {
+        canonicalIndex[i] = existing;
+      }
+    });
+    const canon = (i: number) => canonicalIndex[i];
+
+    // preform and store the edge tessellations once
+    const edgeMap: Record<string, LineString> = {};
+    for (const edge of voronoiResult.edges) {
+      if (edge.location === 'interior') {
+        const pts = tessellate(edge.geometry);
+        const coords = pts.map((p) => new Coordinate(p.x, p.y));
+        edgeMap[getEdgeId(edge)] = geometryFactory.createLineString(coords);
+      }
+    }
+
+    // iterate over the voronoi edges, build the spine graph, spineTree, and legTree
+    this.spineGraph = new graphlib.Graph<
+      null,
+      Point,
+      { geometry: LineString; weight: number; from: string; to: string }
+    >({ directed: false });
+    this.spineTree = new STRtree();
+    this.legTree = new STRtree();
+    for (const edge of voronoiResult.edges) {
+      if (edge.location === 'interior') {
+        const idFrom = edge.from.toString();
+        const vFrom = voronoiResult.vertices[edge.from];
+        const cFrom = new Coordinate(vFrom.x, vFrom.y);
+        const pFrom = geometryFactory.createPoint(cFrom);
+        const idTo = edge.to.toString();
+        const vTo = voronoiResult.vertices[edge.to];
+        const cTo = new Coordinate(vTo.x, vTo.y);
+        const pTo = geometryFactory.createPoint(cTo);
+        if (!vFrom.isInput) this.spineGraph.setNode(idFrom, pFrom);
+        if (!vTo.isInput) this.spineGraph.setNode(idTo, pTo);
+        if (!vFrom.isInput !== !vTo.isInput) {
+          const geometry = geometryFactory.createLineString([cFrom, cTo]);
+          const node = vFrom.isInput ? idTo : idFrom;
+          this.legTree.insert(geometry.getEnvelopeInternal(), { geometry, node });
+        }
+        if (!vFrom.isInput && !vTo.isInput) {
+          const geometry = edgeMap[getEdgeId(edge)];
+          const weight = geometry.getLength();
+          this.spineGraph.setEdge(idFrom, idTo, {
+            geometry,
+            weight,
+            from: idFrom,
+            to: idTo,
+          });
+          this.spineTree.insert(geometry.getEnvelopeInternal(), {
+            geometry,
+            nodes: [idFrom, idTo],
+          });
         }
       }
     }
 
-    if (
-      this.spinePaths[startAccess.node][endAccess.node] !== null &&
-      this.spinePaths[startAccess.node][endAccess.node].distance < Infinity
-    ) {
-      let currNode = endAccess.node;
-      const coords = [endAccess.coordinate];
-      coords.push(this.spineGraph.node(currNode));
-      while (currNode !== startAccess.node) {
-        const prevNode = this.spinePaths[startAccess.node][currNode].predecessor;
-        coords.push(this.spineGraph.node(prevNode));
-        currNode = prevNode;
+    // iterate over the faces, build the cell tree
+    this.cellTree = new STRtree();
+    for (const face of voronoiResult.faces) {
+      // spine is the set of internal edges (and unique vertices) that
+      // have no endpoint on the boundary of the shape
+      const spine: { nodes: Set<string>; edges: string[][] } = {
+        nodes: new Set<string>(),
+        edges: [],
+      };
+
+      // edgeSequence is the sequence of edges defining the internal
+      // boundary of the face
+      const edgeSequence = [];
+
+      // find the shared vertex between the first and last boundary edges
+      const { from, to } = voronoiResult.edges[face.boundary[0]];
+      const last = voronoiResult.edges[face.boundary[face.boundary.length - 1]];
+      let prev =
+        canon(from) === canon(last.from) || canon(from) === canon(last.to) ? from : to;
+
+      // iterate over the boundary edges
+      for (const e of face.boundary) {
+        const curr = voronoiResult.edges[e];
+        const id = getEdgeId(curr);
+        if (curr.location === 'interior') {
+          // if the previous shared vertex is the current "to" vertex we
+          // need to reverse the order of the edge points later
+          const isReversed = canon(prev) === canon(curr.to);
+          const vertices = isReversed ? [curr.to, curr.from] : [curr.from, curr.to];
+          edgeSequence.push({ id, vertices, isReversed });
+          const vFrom = voronoiResult.vertices[curr.from];
+          const vTo = voronoiResult.vertices[curr.to];
+          if (!vFrom.isInput) spine.nodes.add(curr.from.toString());
+          if (!vTo.isInput) spine.nodes.add(curr.to.toString());
+          if (!vFrom.isInput && !vTo.isInput)
+            spine.edges.push([curr.from.toString(), curr.to.toString()]);
+        }
+        // update prev to be the new shared vertex
+        if (canon(prev) === canon(curr.to)) prev = curr.from;
+        else prev = curr.to;
       }
-      coords.push(this.spineGraph.node(startAccess.node));
-      coords.push(startAccess.coordinate);
-      if (coords.length > 1) {
-        return geometryFactory.createLineString(coords).reverse();
-      } else {
-        return geometryFactory.createLineString();
+
+      if (edgeSequence.length > 0) {
+        // construct the cell boundary points, we need to be careful here because when
+        // two edges are directly connected we need to drop the shared endpoint from one
+        // but if they are separated by non-internal edges we need to keep both endpoints
+        const boundary = [];
+        let prev = null;
+        for (const { id, vertices, isReversed } of edgeSequence) {
+          const pts = edgeMap[id].getCoordinates();
+          const start =
+            prev === null ||
+            (canon(prev) !== canon(vertices[0]) && canon(prev) !== canon(vertices[1]))
+              ? 0
+              : 1;
+          for (let i = start; i < pts.length; i++) {
+            const pt = pts[isReversed ? pts.length - 1 - i : i];
+            if (boundary.length === 0 || boundary[boundary.length - 1] !== pt)
+              boundary.push(pt);
+          }
+          prev = vertices[1];
+        }
+        boundary.push(boundary[0]);
+        // insert the cell into the tree
+        const geometry = TopologyPreservingSimplifier.simplify(
+          geometryFactory.createPolygon(geometryFactory.createLinearRing(boundary)),
+          0.00001,
+        );
+        this.cellTree.insert(geometry.getEnvelopeInternal(), { geometry, spine });
       }
-    } else {
-      return geometryFactory.createLineString();
     }
+
+    // build the trees
+    this.spineTree.build();
+    this.legTree.build();
+    this.cellTree.build();
+
+    // compute the shortest paths between all nodes in the spineGraph
+    this.spineDijkstra = graphlib.alg.dijkstraAll(
+      this.spineGraph,
+      (e) => this.spineGraph.edge(e).weight,
+      (n) => this.spineGraph.nodeEdges(n)!,
+    );
+    const end = performance.now();
+  }
+
+  // find the potential connections to the spine and calculate the shortest path between
+  // the two groups of connection points
+  findPath(
+    start: Point | LineString | Polygon,
+    end: Point | LineString | Polygon,
+  ): LineString {
+    const startConnections = this.getConnections(start);
+    const endConnections = this.getConnections(end);
+    if (startConnections === undefined || endConnections === undefined)
+      return geometryFactory.createLineString();
+    const minPath: {
+      nodes: string[] | undefined;
+      weight: number;
+      start: { node: string; connectionPath: Coordinate[] } | undefined;
+      end: { node: string; connectionPath: Coordinate[] } | undefined;
+    } = { nodes: undefined, weight: Infinity, start: undefined, end: undefined };
+    for (const startConnection of startConnections) {
+      for (const endConnection of endConnections) {
+        const currPath = this.getShortestPath(startConnection.node, endConnection.node);
+        if (currPath === undefined) continue;
+        if (currPath.weight < minPath.weight) {
+          minPath.nodes = currPath.nodes;
+          minPath.weight = currPath.weight;
+          minPath.start = startConnection;
+          minPath.end = endConnection;
+        }
+      }
+    }
+    if (
+      minPath.start !== undefined &&
+      minPath.end !== undefined &&
+      minPath.nodes !== undefined
+    ) {
+      if (minPath.nodes.length === 1) {
+        return geometryFactory.createLineString([
+          ...minPath.start.connectionPath,
+          ...minPath.end.connectionPath.reverse(),
+        ]);
+      }
+      const path = [...minPath.start.connectionPath];
+      let prevNode = minPath.nodes[0];
+      let coordinates = null;
+      for (let i = 1; i < minPath.nodes.length; i++) {
+        const currNode = minPath.nodes[i];
+        const { geometry, from, to } = this.spineGraph.edge(prevNode, currNode);
+        if (from === prevNode && to === currNode) {
+          coordinates = geometry.getCoordinates();
+        } else {
+          coordinates = geometry.reverse().getCoordinates();
+        }
+        path.push(...coordinates.slice(0, -1));
+        prevNode = currNode;
+      }
+      path.push(coordinates[coordinates.length - 1]);
+      path.push(...minPath.end.connectionPath.reverse());
+      return geometryFactory.createLineString(path);
+    }
+    return geometryFactory.createLineString();
+  }
+
+  getConnections(
+    source: Point | LineString | Polygon,
+    connectionPath: Coordinate[] = [],
+    checkedIntersection = false,
+  ): { node: string; connectionPath: Coordinate[] }[] | undefined {
+    // prepare the input, buffer points and extract linear components
+    let lineal = source;
+    if (source instanceof Point) {
+      lineal = LinearComponentExtracter.getGeometry(source.buffer(1));
+      connectionPath.push(source.getCoordinate());
+    } else if (source instanceof Polygon) {
+      lineal = LinearComponentExtracter.getGeometry(source);
+    }
+
+    // check if input intersects the original polygon, if not find the nearest
+    // point on the boundary and proceed with the point geometry
+    if (!checkedIntersection) {
+      if (!RelateOp.intersects(lineal, this.polygon)) {
+        const [c1, c2] = DistanceOp.nearestPoints(this.polygon, lineal);
+        return this.getConnections(
+          geometryFactory.createPoint(c1).buffer(1),
+          [...connectionPath, c2, c1],
+          true,
+        );
+      }
+    }
+
+    // check if the input intersects the spine, if so return the connections to the
+    // two spine edge endpoints
+    const spineNeighbors = this.spineTree.query(lineal.getEnvelopeInternal());
+    const spineConnections = [];
+    for (const { geometry, nodes } of spineNeighbors) {
+      if (lineal.intersects(geometry)) {
+        const intersection = OverlayOp.intersection(lineal, geometry);
+        for (const node of nodes) {
+          const [c] = DistanceOp.nearestPoints(intersection, this.spineGraph.node(node));
+          const distanceOp = new DistanceOp(geometry, geometryFactory.createPoint(c));
+          const [location] = distanceOp.nearestLocations();
+          const substring = this.extractToEndpoint(
+            geometry,
+            location,
+            node === nodes[0] ? 'start' : 'end',
+          );
+          spineConnections.push({
+            node,
+            connectionPath: [...connectionPath, ...substring],
+          });
+        }
+      }
+    }
+    if (spineConnections.length > 0) return spineConnections;
+
+    // check if the input intersects the legs, if so return the connections to the
+    // spine from the intersecting legs
+    const legNeighbors = this.legTree.query(lineal.getEnvelopeInternal());
+    const legConnections = [];
+    for (const { geometry, node } of legNeighbors) {
+      if (lineal.intersects(geometry)) {
+        const intersection = OverlayOp.intersection(lineal, geometry);
+        const [c1, c2] = DistanceOp.nearestPoints(
+          intersection,
+          this.spineGraph.node(node),
+        );
+        legConnections.push({ node, connectionPath: [...connectionPath, c1, c2] });
+      }
+    }
+    if (legConnections.length > 0) return legConnections;
+
+    // find all cells that the input intersects, for each intersecting cell
+    // find the nearest point on the cells spine pieces and return the connections
+    const cellNeighbors = this.cellTree.query(lineal.getEnvelopeInternal());
+    const cellConnections: { node: string; connectionPath: Coordinate[] }[] = [];
+    for (const { geometry, spine } of cellNeighbors) {
+      const minConnections: {
+        dist: number;
+        connections: { node: string; connectionPath: Coordinate[] }[];
+      } = { dist: Infinity, connections: [] };
+      if (lineal.intersects(geometry)) {
+        const intersection = lineal.intersection(geometry);
+        if (spine.edges.length > 0) {
+          for (const e of spine.edges) {
+            const edge = this.spineGraph.edge(e[0], e[1]);
+            const distanceOp = new DistanceOp(edge.geometry, intersection);
+            const [l1, l2] = distanceOp.nearestLocations();
+            const [c1, c2] = [l1.getCoordinate(), l2.getCoordinate()];
+            const currDist = c1.distance(c2);
+            if (currDist < minConnections.dist) {
+              minConnections.dist = currDist;
+              minConnections.connections = [
+                {
+                  node: e[0],
+                  connectionPath: [
+                    ...connectionPath,
+                    c2,
+                    ...this.extractToEndpoint(
+                      edge.geometry,
+                      l1,
+                      e[0] === edge.from ? 'start' : 'end',
+                    ),
+                  ],
+                },
+                {
+                  node: e[1],
+                  connectionPath: [
+                    ...connectionPath,
+                    c2,
+                    ...this.extractToEndpoint(
+                      edge.geometry,
+                      l1,
+                      e[1] === edge.from ? 'start' : 'end',
+                    ),
+                  ],
+                },
+              ];
+            }
+          }
+        } else {
+          for (const node of [...spine.nodes]) {
+            const nodePoint = this.spineGraph.node(node);
+            const [c1, c2] = DistanceOp.nearestPoints(nodePoint, intersection);
+            const currDist = c1.distance(c2);
+            if (currDist < minConnections.dist) {
+              minConnections.dist = currDist;
+              minConnections.connections = [
+                { node, connectionPath: [...connectionPath, c2, c1] },
+              ];
+            }
+          }
+        }
+        cellConnections.push(...minConnections.connections);
+      }
+    }
+    if (cellConnections.length > 0) return cellConnections;
+
+    console.log('no connections found???');
+    return undefined;
+  }
+
+  extractToEndpoint(
+    line: LineString,
+    location: GeometryLocation,
+    endpoint: 'start' | 'end',
+  ): Coordinate[] {
+    const lineCoords = line.getCoordinates() as Coordinate[];
+    const point = new Coordinate(location.getCoordinate());
+    const segmentIndex = location.getSegmentIndex();
+
+    let coords: Coordinate[];
+
+    if (endpoint === 'start') {
+      coords = [
+        ...lineCoords.slice(0, segmentIndex + 1).map((coord) => new Coordinate(coord)),
+        point,
+      ];
+
+      // Return from the location toward the requested endpoint.
+      coords.reverse();
+    } else {
+      coords = [
+        point,
+        ...lineCoords.slice(segmentIndex + 1).map((coord) => new Coordinate(coord)),
+      ];
+    }
+
+    // Avoid duplicating the location when it lies exactly on a vertex.
+    coords = coords.filter((coord, i) => i === 0 || !coord.equals2D(coords[i - 1]));
+
+    if (coords.length < 2) {
+      coords.push(new Coordinate(coords[0]));
+    }
+
+    return coords;
+  }
+
+  getShortestPath(
+    source: string,
+    target: string,
+  ): { nodes: string[]; weight: number } | undefined {
+    const results = this.spineDijkstra[source];
+    const targetResult = results?.[target];
+
+    if (!targetResult || !Number.isFinite(targetResult.distance)) {
+      return undefined;
+    }
+
+    const nodes = [];
+    let current = target;
+
+    while (current !== undefined) {
+      nodes.push(current);
+
+      if (current === source) break;
+
+      current = results[current]?.predecessor;
+    }
+
+    if (nodes[nodes.length - 1] !== source) {
+      return undefined;
+    }
+
+    nodes.reverse();
+
+    return {
+      nodes,
+      weight: targetResult.distance,
+    };
   }
 }
