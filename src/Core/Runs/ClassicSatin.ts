@@ -156,19 +156,23 @@ export class ClassicSatin implements IRun {
   }
 
   getTravelStitches(subsection: LineString, pixelsPerMm: number): Stitch[] {
-    const travelStitches: Stitch[] = [];
-    if (subsection.getNumPoints() < 4) {
-      const last = subsection.getEndPoint();
-      travelStitches.push(new Stitch(new Vector(last.x, last.y), StitchType.TRAVEL));
-      return travelStitches;
+    if (subsection.getNumPoints() < 2) {
+      return [];
     }
-    const vertices: Vector[] = [];
-    for (let i = 1; i < subsection.getNumPoints(); i++) {
-      const prev = subsection.getCoordinateN(i - 1);
-      const curr = subsection.getCoordinateN(i);
-      const midpoint = new Vector(0.5 * (prev.x + curr.x), 0.5 * (prev.y + curr.y));
-      vertices.push(midpoint);
+    const start = subsection.getCoordinateN(0);
+    const end = subsection.getCoordinateN(subsection.getNumPoints() - 1);
+    const startLen = this.lineData.center.lenIndex.project(start);
+    const endLen = this.lineData.center.lenIndex.project(end);
+    if (Math.abs(startLen - endLen) < 0.5 * pixelsPerMm) {
+      return [new Stitch(new Vector(end.x, end.y), StitchType.TRAVEL)];
     }
+    const centerSection = this.lineData.center.lenIndex.extractLine(startLen, endLen);
+    if (centerSection.getNumPoints() < 2) {
+      return [new Stitch(new Vector(end.x, end.y), StitchType.TRAVEL)];
+    }
+    const vertices: Vector[] = centerSection
+      .getCoordinates()
+      .map((c: Coordinate) => new Vector(c.x, c.y));
     const travelRun = new Run(vertices, {
       stitchLengthMm: this.travelLengthMm,
       stitchToleranceMm: this.travelToleranceMm,
