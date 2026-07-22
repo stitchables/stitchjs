@@ -94,7 +94,7 @@ class Component {
     }
 
     const runSpaceCollection = new ArrayList(0);
-    for (const run of runs) runSpaceCollection.add(run.boundary);
+    for (const run of runs) if (run.run.routeAsHole) runSpaceCollection.add(run.boundary);
     const runSpace = CascadedPolygonUnion.union(runSpaceCollection);
 
     const travelSpaceCollection = new ArrayList(0);
@@ -258,7 +258,8 @@ class Component {
             ? nextEdge.path.getStartPoint()
             : nextEdge.path.getEndPoint();
       if (seenNodes.has(path[i])) {
-        const pathFinder = new PolygonPathFinder(this.runs[parseInt(path[i])].boundary);
+        // reuse the path finder already built for this run's boundary
+        const pathFinder = this.runs[parseInt(path[i])].pathFinder;
         plan.unshift(pathFinder.findPath(currEntry, currExit));
       } else {
         plan.unshift({

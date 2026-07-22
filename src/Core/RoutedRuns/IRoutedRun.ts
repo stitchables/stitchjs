@@ -9,6 +9,7 @@ import { IRun } from '../IRun';
 import PolygonPathFinder from '../../Optimize/PolygonPathFinder';
 
 export interface IRoutedRun extends IRun {
+  routeAsHole: boolean;
   getShape: () => Polygon;
   getUnderlayRuns: (pixelsPerMm: number) => IRoutedRun[];
   getUnderlayStitches: (

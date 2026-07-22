@@ -51,11 +51,14 @@
     });
     for (const ring of rings) debug.addRun(new Stitch.Core.Runs.Run(ring, { stitchToleranceMm: 0.01 }));
 
-    const bcdFill = new Stitch.Core.Runs.BCDFill({
-      shell: rings[0],
-      holes: rings.slice(1)
-    });
-    thread.addRun(bcdFill);
+    const bcdFill = new Stitch.Core.RoutedRuns.RoutedFill(
+      { shell: rings[0], holes: rings.slice(1) },
+      {
+        underlays: [{ insetMm: 0.5 }],
+        // underlays: [],
+      }
+    );
+    thread.addRun(new Stitch.Core.RoutedRuns.AutoRoute([bcdFill]));
 
     rebuildCanvases();
     stitchSlider.max = segments.length;

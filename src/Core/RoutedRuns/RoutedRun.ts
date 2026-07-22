@@ -16,6 +16,7 @@ export default class RoutedRun implements IRoutedRun {
   line: LineString | LinearRing;
   stitchLengthMm: number;
   stitchToleranceMm: number;
+  routeAsHole: boolean;
   constructor(
     line: Vector[],
     options?: {
@@ -31,6 +32,7 @@ export default class RoutedRun implements IRoutedRun {
     }
     this.stitchLengthMm = options?.stitchLengthMm ?? 3;
     this.stitchToleranceMm = options?.stitchToleranceMm ?? 0.1;
+    this.routeAsHole = true;
   }
 
   getShape(): Polygon {

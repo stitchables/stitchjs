@@ -21,8 +21,9 @@ export default class MATPolygonPathFinder implements IPolygonPathFinder {
   spineTree: STRtree;
   legTree: STRtree;
   cellTree: STRtree;
-  spineDijkstra: Record<string, Record<string, graphlib.Path>>;
+  spineDijkstraCache: Map<string, Record<string, graphlib.Path>>;
   constructor(polygon: Polygon) {
+    this.spineDijkstraCache = new Map();
     // ensure input polygon is free of collinear points
     this.polygon = TopologyPreservingSimplifier.simplify(polygon, 0.1);
 
@@ -202,13 +203,24 @@ export default class MATPolygonPathFinder implements IPolygonPathFinder {
     this.legTree.build();
     this.cellTree.build();
 
-    // compute the shortest paths between all nodes in the spineGraph
-    this.spineDijkstra = graphlib.alg.dijkstraAll(
-      this.spineGraph,
-      (e) => this.spineGraph.edge(e).weight,
-      (n) => this.spineGraph.nodeEdges(n)!,
-    );
-    const end = performance.now();
+    // Shortest paths on the spine graph are computed lazily, single-source, and
+    // memoized. Building all-pairs (dijkstraAll) up front is O(V * (E + V log V))
+    // and dominates construction for large spines, yet findPath only ever queries
+    // a handful of source nodes (those where the endpoints connect to the spine).
+  }
+
+  getDijkstraFrom(source: string): Record<string, graphlib.Path> {
+    let results = this.spineDijkstraCache.get(source);
+    if (results === undefined) {
+      results = graphlib.alg.dijkstra(
+        this.spineGraph,
+        source,
+        (e) => this.spineGraph.edge(e).weight,
+        (n) => this.spineGraph.nodeEdges(n)!,
+      );
+      this.spineDijkstraCache.set(source, results);
+    }
+    return results;
   }
 
   // find the potential connections to the spine and calculate the shortest path between
@@ -449,7 +461,8 @@ export default class MATPolygonPathFinder implements IPolygonPathFinder {
     source: string,
     target: string,
   ): { nodes: string[]; weight: number } | undefined {
-    const results = this.spineDijkstra[source];
+    if (!this.spineGraph.hasNode(source)) return undefined;
+    const results = this.getDijkstraFrom(source);
     const targetResult = results?.[target];
 
     if (!targetResult || !Number.isFinite(targetResult.distance)) {

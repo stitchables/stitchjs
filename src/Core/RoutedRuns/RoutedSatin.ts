@@ -29,6 +29,7 @@ export class RoutedSatin implements IRoutedRun {
     options?: UnderlayOptions;
   }[];
   shape: Polygon | undefined;
+  routeAsHole: boolean;
   constructor(
     quadStripVertices: Vector[],
     options?: {
@@ -40,6 +41,7 @@ export class RoutedSatin implements IRoutedRun {
         type: string;
         options?: UnderlayOptions;
       }[];
+      routeAsHole: boolean;
     },
   ) {
     this.quadStripVertices = quadStripVertices;
@@ -48,6 +50,7 @@ export class RoutedSatin implements IRoutedRun {
     this.travelToleranceMm = options?.travelToleranceMm ?? 0.1;
     this.split = options?.split;
     this.underlays = options?.underlays ?? [];
+    this.routeAsHole = options?.routeAsHole ?? true;
   }
 
   getShape(): Polygon {

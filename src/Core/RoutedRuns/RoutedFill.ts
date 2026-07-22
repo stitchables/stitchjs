@@ -7,6 +7,7 @@ import { Stitch } from '../Stitch';
 import { AutoRoute } from './AutoRoute';
 import { createPolygon } from '../../Geometry/createPolygon';
 import { BCDFill } from '../Runs/BCDFill';
+import TopologyPreservingSimplifier from 'jsts/org/locationtech/jts/simplify/TopologyPreservingSimplifier';
 
 interface UnderlayParams {
   insetMm?: number;
@@ -47,6 +48,7 @@ export class RoutedFill implements IRoutedRun {
   underlays: UnderlayParams[];
   gradient: FillGradient | undefined;
   skipLast: boolean;
+  routeAsHole: boolean;
 
   constructor(
     polygon: { shell: Vector[]; holes?: Vector[][] },
@@ -65,6 +67,7 @@ export class RoutedFill implements IRoutedRun {
       underlays?: UnderlayParams[];
       gradient?: FillGradient;
       skipLast?: boolean;
+      routeAsHole?: boolean;
     },
   ) {
     this.shell = polygon.shell;
@@ -88,6 +91,7 @@ export class RoutedFill implements IRoutedRun {
     this.underlays = options?.underlays ?? [];
     this.gradient = options?.gradient;
     this.skipLast = options?.skipLast ?? true;
+    this.routeAsHole = options?.routeAsHole ?? true;
   }
 
   getShape(): Polygon {
@@ -107,8 +111,12 @@ export class RoutedFill implements IRoutedRun {
         stitchLengthMm: params.stitchLengthMm ?? 3,
         travelLengthMm: params.travelLengthMm ?? 2.5,
         travelToleranceMm: params.travelToleranceMm ?? 1,
+        routeAsHole: false,
       };
-      const buffer = this.polygon.buffer(-underlayOptions.insetMm * pixelsPerMm);
+      const buffer = TopologyPreservingSimplifier.simplify(
+        this.polygon.buffer(-underlayOptions.insetMm * pixelsPerMm),
+        2,
+      );
       const insetPolygons = PolygonExtracter.getPolygons(buffer).toArray();
       for (const insetPolygon of insetPolygons) {
         const shell = insetPolygon
@@ -150,8 +158,15 @@ export class RoutedFill implements IRoutedRun {
         stitchLengthMm: params.stitchLengthMm ?? 3,
         travelLengthMm: params.travelLengthMm ?? 2.5,
         travelToleranceMm: params.travelToleranceMm ?? 1,
+        routeAsHole: false,
       };
-      const buffer = this.polygon.buffer(-underlayOptions.insetMm * pixelsPerMm);
+      // The raw inward buffer carries far more vertices than underlay routing
+      // needs (rounded corners, boundary wiggle); simplifying keeps the medial-axis
+      // path finder tractable. Matches the intent of getUnderlayAutoRoute.
+      const buffer = TopologyPreservingSimplifier.simplify(
+        this.polygon.buffer(-underlayOptions.insetMm * pixelsPerMm),
+        2,
+      );
       const insetPolygons = PolygonExtracter.getPolygons(buffer).toArray();
       for (const insetPolygon of insetPolygons) {
         if (insetPolygon.isEmpty()) continue;
@@ -180,11 +195,30 @@ export class RoutedFill implements IRoutedRun {
   ): Stitch[] {
     const underlays = this.getUnderlayRuns(pixelsPerMm);
     if (underlays.length === 0) return [];
+    // Underlay travel only needs a coarse corridor; simplify the boundary so the
+    // free-space / travel-corridor path finders aren't built at full fill resolution.
+    const travelPolygon = TopologyPreservingSimplifier.simplify(
+      this.polygon,
+      2,
+    ) as Polygon;
+    const travelShell = travelPolygon
+      .getExteriorRing()
+      .getCoordinates()
+      .map((c: Coordinate) => new Vector(c.x, c.y));
+    const travelHoles: Vector[][] = [];
+    for (let i = 0; i < travelPolygon.getNumInteriorRing(); i++) {
+      travelHoles.push(
+        travelPolygon
+          .getInteriorRingN(i)
+          .getCoordinates()
+          .map((c: Coordinate) => new Vector(c.x, c.y)),
+      );
+    }
     const autoRoute = new AutoRoute(underlays, {
       entry: options?.entry ? new Vector(options.entry.x, options.entry.y) : undefined,
       exit: options?.exit ? new Vector(options.exit.x, options.exit.y) : undefined,
       preserveOrder: false,
-      travelPolygons: [{ shell: this.shell, holes: this.holes }],
+      travelPolygons: [{ shell: travelShell, holes: travelHoles }],
       travelLengthMm: this.travelLengthMm,
       travelToleranceMm: this.travelToleranceMm,
     });
