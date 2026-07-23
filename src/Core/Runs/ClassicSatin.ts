@@ -13,7 +13,7 @@ import { StitchType } from '../EStitchType';
 import { IRun } from '../IRun';
 import { Run } from './Run';
 
-interface UnderlayOptions {
+export interface UnderlayOptions {
   stitchLengthMm?: number;
   stitchToleranceMm?: number;
   travelLengthMm?: number;
@@ -159,8 +159,14 @@ export class ClassicSatin implements IRun {
     if (subsection.getNumPoints() < 2) {
       return [];
     }
-    const start = subsection.getCoordinateN(0);
-    const end = subsection.getCoordinateN(subsection.getNumPoints() - 1);
+    const midpoint = (a: Coordinate, b: Coordinate): Coordinate => {
+      return new Coordinate(0.5 * (a.x + b.x), 0.5 * (a.y + b.y));
+    };
+    const start = midpoint(subsection.getCoordinateN(0), subsection.getCoordinateN(1));
+    const end = midpoint(
+      subsection.getCoordinateN(subsection.getNumPoints() - 1),
+      subsection.getCoordinateN(subsection.getNumPoints() - 2),
+    );
     const startLen = this.lineData.center.lenIndex.project(start);
     const endLen = this.lineData.center.lenIndex.project(end);
     if (Math.abs(startLen - endLen) < 0.5 * pixelsPerMm) {

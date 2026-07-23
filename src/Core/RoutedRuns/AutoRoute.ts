@@ -8,36 +8,16 @@ import { OverlayOp } from 'jsts/org/locationtech/jts/operation/overlay';
 import { STRtree } from 'jsts/org/locationtech/jts/index/strtree';
 import { DistanceOp } from 'jsts/org/locationtech/jts/operation/distance';
 import ItemBoundable from 'jsts/org/locationtech/jts/index/strtree/ItemBoundable';
-import ItemDistance from 'jsts/org/locationtech/jts/index/strtree/ItemDistance';
 import ArrayList from 'jsts/java/util/ArrayList';
 import { Vector } from '../../Math/Vector';
 import { geometryFactory } from '../../util/jsts';
 import { Stitch } from '../Stitch';
 import { createPolygon } from '../../Geometry/createPolygon';
 import PolygonPathFinder from '../../Optimize/PolygonPathFinder';
-import DisjointSet from '../../Optimize/DisjointSet';
 import { resample } from '../../Geometry/resample';
 import { StitchType } from '../EStitchType';
 import MinimumSpanningTree from '../../Optimize/MinimumSpanningTree';
 import { geometryMst } from '../../Geometry/geometryMst';
-
-class DisjointSetItemDistance {
-  disjointSet: DisjointSet;
-  constructor(nodeIds: string[]) {
-    this.disjointSet = new DisjointSet(nodeIds);
-  }
-  distance(item1: ItemBoundable, item2: ItemBoundable) {
-    if (item1 === item2) return Number.MAX_VALUE;
-    // check if they are in the same connected component
-    const item1Parent = this.disjointSet.find(item1.getItem().nodeId);
-    const item2Parent = this.disjointSet.find(item2.getItem().nodeId);
-    if (item1Parent === item2Parent) return Number.MAX_VALUE;
-    return item1.getItem().geometry.distance(item2.getItem().geometry);
-  }
-  get interfaces_() {
-    return [ItemDistance];
-  }
-}
 
 class GeometryItemDistance {
   distance(item1: ItemBoundable, item2: ItemBoundable) {

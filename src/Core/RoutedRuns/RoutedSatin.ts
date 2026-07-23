@@ -3,8 +3,7 @@ import { Vector } from '../../Math/Vector';
 import { Stitch } from '../Stitch';
 import { Coordinate, Polygon } from 'jsts/org/locationtech/jts/geom';
 import CascadedPolygonUnion from 'jsts/org/locationtech/jts/operation/union/CascadedPolygonUnion';
-import ArrayList from 'jsts/java/util/ArrayList';
-import Polygonizer from 'jsts/org/locationtech/jts/operation/polygonize/Polygonizer';
+import Arrays from 'jsts/java/util/Arrays';
 import { geometryFactory } from '../../util/jsts';
 import { ClassicSatin, SatinSplitOptions } from '../Runs/ClassicSatin';
 
@@ -41,7 +40,7 @@ export class RoutedSatin implements IRoutedRun {
         type: string;
         options?: UnderlayOptions;
       }[];
-      routeAsHole: boolean;
+      routeAsHole?: boolean;
     },
   ) {
     this.quadStripVertices = quadStripVertices;
@@ -54,33 +53,33 @@ export class RoutedSatin implements IRoutedRun {
   }
 
   getShape(): Polygon {
-    if (this.shape !== undefined) return this.shape;
-    const toCoord = (v: Vector) => new Coordinate(v.x, v.y);
-    const ringCoords = [];
-    for (let i = 0; i < this.quadStripVertices.length; i += 2) {
-      ringCoords.push(toCoord(this.quadStripVertices[i]));
-      ringCoords.unshift(toCoord(this.quadStripVertices[i + 1]));
+    function makeTriangle(a: Vector, b: Vector, c: Vector, epsArea = 1e-9) {
+      // reject degenerate/zero-area triangles (collinear or duplicate points)
+      const area2 = (b.x - a.x) * (c.y - a.y) - (b.y - a.y) * (c.x - a.x);
+      if (Math.abs(area2) < epsArea) return null;
+      const ring = geometryFactory.createLinearRing([
+        new Coordinate(a.x, a.y),
+        new Coordinate(b.x, b.y),
+        new Coordinate(c.x, c.y),
+        new Coordinate(a.x, a.y),
+      ]);
+      return geometryFactory.createPolygon(ring, []);
     }
-    ringCoords.push(toCoord(this.quadStripVertices[this.quadStripVertices.length - 1]));
-    const polygonizer = new Polygonizer(true);
-    polygonizer.add(geometryFactory.createLinearRing(ringCoords));
-    const polygon = polygonizer.getGeometry();
-    this.shape = polygon;
-    return polygon;
-
-    // const polygonCollection = new ArrayList(0);
-    // for (let i = 1; i < this.quadStripVertices.length / 2; i++) {
-    //   polygonCollection.add(
-    //     geometryFactory.createPolygon([
-    //       toCoord(this.quadStripVertices[2 * i]),
-    //       toCoord(this.quadStripVertices[2 * i + 1]),
-    //       toCoord(this.quadStripVertices[2 * i - 1]),
-    //       toCoord(this.quadStripVertices[2 * i - 2]),
-    //       toCoord(this.quadStripVertices[2 * i]),
-    //     ]),
-    //   );
-    // }
-    // return CascadedPolygonUnion.union(polygonCollection);
+    const triangles: Polygon[] = [];
+    for (let i = 0; i + 3 < this.quadStripVertices.length; i += 2) {
+      const l0 = this.quadStripVertices[i];
+      const r0 = this.quadStripVertices[i + 1];
+      const l1 = this.quadStripVertices[i + 2];
+      const r1 = this.quadStripVertices[i + 3];
+      // one consistent diagonal (L0-R1) — never needs bowtie detection,
+      // both halves are triangles and thus always simple
+      const t1 = makeTriangle(l0, r0, r1);
+      const t2 = makeTriangle(l0, r1, l1);
+      if (t1) triangles.push(t1);
+      if (t2) triangles.push(t2);
+    }
+    if (triangles.length === 0) return geometryFactory.createPolygon();
+    return CascadedPolygonUnion.union(Arrays.asList(triangles));
   }
 
   getUnderlayRuns(pixelsPerMm: number): IRoutedRun[] {

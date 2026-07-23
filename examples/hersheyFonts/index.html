@@ -1,0 +1,344 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Hershey Fonts — Text to Satin</title>
+  <script src="../../dist/stitch.global.js"></script>
+  <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
+  <style>
+    html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; background: #111; color: #eee; }
+    body { display: flex; flex-direction: column; }
+    header { padding: 16px 20px; border-bottom: 1px solid #333; }
+    h1 { margin: 0 0 12px; font-size: 16px; font-weight: 600; }
+    .controls { display: flex; gap: 20px; align-items: flex-end; flex-wrap: wrap; }
+    label { font-size: 12px; color: #aaa; display: flex; flex-direction: column; gap: 4px; }
+    input[type="text"] { width: 360px; font-size: 16px; padding: 6px 8px; background: #1c1c1c; color: #eee; border: 1px solid #444; border-radius: 4px; }
+    input[type="range"] { width: 150px; }
+    .hint { font-size: 12px; color: #666; margin-top: 8px; }
+    .scrub { margin-top: 12px; }
+    .scrub input[type="range"] { width: 100%; }
+    .scrub .readout { color: #ccc; font-variant-numeric: tabular-nums; }
+    main { flex: 1; position: relative; overflow: hidden; }
+    canvas { position: absolute; inset: 0; margin: auto; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Hershey Sans 1 — type to convert to satin stitches</h1>
+    <div class="controls">
+      <label>Text
+        <input id="text" type="text" value="Hello Stitch" autocomplete="off" spellcheck="false" />
+      </label>
+      <label>Font size (px)
+        <input id="size" type="range" min="40" max="300" value="160" />
+      </label>
+      <label>Satin width (px)
+        <input id="width" type="range" min="1" max="50" step="1" value="20" />
+      </label>
+      <label>Pen angle (°)
+        <input id="angle" type="range" min="0" max="180" step="1" value="45" />
+      </label>
+      <label>Density (mm)
+        <input id="density" type="range" min="0.2" max="5" step="0.05" value="2" />
+      </label>
+    </div>
+    <div class="hint">Press <b>D</b> to open the embroidery download modal.</div>
+    <div class="scrub">
+      <label>Stitch order — <span id="scrubReadout" class="readout">0 / 0</span>
+        <input id="scrub" type="range" min="0" max="0" value="0" />
+      </label>
+    </div>
+  </header>
+  <main id="stage"></main>
+
+<script>
+  const FONT_URL = './HersheySans1.svg';
+
+  // font-face metrics (read from the file below, with sensible fallbacks)
+  const font = {
+    unitsPerEm: 1000,
+    ascent: 800,
+    descent: -200,
+    defaultAdvance: 378,
+    glyphs: new Map(), // char -> { advance, strokes: [ [ {x, y}, ... ], ... ] }
+  };
+
+  /**
+   * Parse a glyph "d" attribute into an array of strokes (polylines).
+   * Hershey glyphs only use absolute moveto (M) and lineto (L) commands.
+   * Coordinates are in font units with Y pointing UP (baseline at y = 0).
+   * Each stroke is a separate pen-down path; an "M" starts a new stroke.
+   */
+  function parsePath(d) {
+    const strokes = [];
+    let stroke = null;
+    const tokens = d.trim().split(/[\s,]+/);
+    let i = 0, cmd = null;
+    while (i < tokens.length) {
+      const t = tokens[i];
+      if (t === 'M' || t === 'L') { cmd = t; i++; continue; }
+      const x = parseFloat(t);
+      const y = parseFloat(tokens[i + 1]);
+      i += 2;
+      if (cmd === 'M') {
+        stroke = [{ x, y }];
+        strokes.push(stroke);
+      } else {
+        if (!stroke) { stroke = [{ x, y }]; strokes.push(stroke); }
+        else stroke.push({ x, y });
+      }
+    }
+    return strokes;
+  }
+
+  async function loadFont() {
+    const res = await fetch(FONT_URL);
+    const svgText = await res.text();
+    const doc = new DOMParser().parseFromString(svgText, 'image/svg+xml');
+
+    const face = doc.querySelector('font-face');
+    if (face) {
+      font.unitsPerEm = parseFloat(face.getAttribute('units-per-em')) || font.unitsPerEm;
+      font.ascent = parseFloat(face.getAttribute('ascent')) || font.ascent;
+      font.descent = parseFloat(face.getAttribute('descent')) || font.descent;
+    }
+    const fontEl = doc.querySelector('font');
+    if (fontEl && fontEl.getAttribute('horiz-adv-x')) {
+      font.defaultAdvance = parseFloat(fontEl.getAttribute('horiz-adv-x'));
+    }
+
+    for (const g of doc.querySelectorAll('glyph')) {
+      const unicode = g.getAttribute('unicode');
+      if (unicode === null) continue;
+      const advance = g.hasAttribute('horiz-adv-x')
+        ? parseFloat(g.getAttribute('horiz-adv-x'))
+        : font.defaultAdvance;
+      const d = g.getAttribute('d');
+      font.glyphs.set(unicode, { advance, strokes: d ? parsePath(d) : [] });
+    }
+  }
+
+  /**
+   * Lay out a string into flattened strokes in a top-left origin, Y-down space
+   * (the same pixel space a Stitch pattern uses). Returns { strokes, width,
+   * height } scaled to `fontSizePx`. Each stroke is a polyline of {x, y} points.
+   */
+  function layoutText(text, fontSizePx) {
+    const scale = fontSizePx / font.unitsPerEm;
+    const lineHeight = (font.ascent - font.descent) * scale;
+    const strokes = [];
+    let penX = 0;
+    let maxX = 0;
+    let line = 0;
+
+    for (const ch of text) {
+      if (ch === '\n') { penX = 0; line++; continue; }
+      const glyph = font.glyphs.get(ch) || font.glyphs.get(' ') || { advance: font.defaultAdvance, strokes: [] };
+      const baselineY = line * lineHeight + font.ascent * scale;
+      for (const s of glyph.strokes) {
+        strokes.push(s.map(p => ({
+          x: penX + p.x * scale,
+          // flip Y: font space is Y-up, SVG/pattern space is Y-down
+          y: baselineY - p.y * scale,
+        })));
+      }
+      penX += glyph.advance * scale;
+      maxX = Math.max(maxX, penX);
+    }
+
+    return { strokes, width: maxX, height: (line + 1) * lineHeight };
+  }
+
+  /**
+   * Build a Stitch pattern for the text. Every glyph stroke becomes its own
+   * RoutedCalligraphySatin (calligraphy satin = center line offset by a fixed
+   * pen angle, giving thick/thin strokes). All of the routed satins are then
+   * handed to a single AutoRoute run, which orders them into one continuous
+   * stitch sequence and inserts travel stitches between strokes.
+   */
+  function buildPattern(text, fontSizePx, satinWidthPx, angleRad, densityMm) {
+    const pad = 0.5 * fontSizePx;
+    const { strokes, width, height } = layoutText(text, fontSizePx);
+
+    const pattern = new Stitch.Core.Pattern(
+      Math.max(width + 2 * pad, 100),
+      Math.max(height + 2 * pad, 100),
+    );
+    const thread = pattern.addThread(220, 0, 0);
+
+    const routedRuns = [];
+    for (const stroke of strokes) {
+      // a satin needs at least a segment to place stitches along
+      if (stroke.length < 2) continue;
+      const centerLine = stroke.map(p => new Stitch.Math.Vector(p.x + pad, p.y + pad));
+      try {
+        routedRuns.push(new Stitch.Core.RoutedRuns.RoutedCalligraphySatin(centerLine, {
+          angle: angleRad,
+          widthPx: satinWidthPx,
+          densityMm: densityMm,
+        }));
+      } catch (e) {
+        // skip degenerate strokes rather than aborting the whole pattern
+        console.warn('skipped stroke:', e);
+      }
+    }
+
+    // AutoRoute throws on an empty array (e.g. blank input), so guard it.
+    if (routedRuns.length > 0) {
+      try {
+        thread.addRun(new Stitch.Core.RoutedRuns.AutoRoute(routedRuns, {
+          entry: new Stitch.Math.Vector(pad, pad),
+          travelLengthMm: 3,
+          travelToleranceMm: 0.1,
+        }));
+      } catch (e) {
+        console.warn('AutoRoute failed:', e);
+      }
+    }
+
+    return pattern;
+  }
+
+  // StitchType enum values (not exported on the public namespace, but stable)
+  const StitchType = { JUMP: 1, TRAVEL: 6, UNDERLAY: 7 };
+
+  let pattern = null;
+  let canvas = null, ctx = null;
+  // ordered stitches for the current pattern, already scaled into display space
+  let displayStitches = []; // { x, y, type, color, isRunStart }
+
+  function rgbToHex(r, g, b) {
+    const h = n => Math.round(n).toString(16).padStart(2, '0');
+    return `#${h(r)}${h(g)}${h(b)}`;
+  }
+
+  /**
+   * Expensive step: rebuild the pattern, then flatten its stitch plan into a
+   * single ordered list of display-space points. AutoRoute is one IRun, so the
+   * flattened order is exactly the stitch-out order (including travel jumps).
+   */
+  function rebuild() {
+    const text = document.getElementById('text').value;
+    const fontSizePx = parseFloat(document.getElementById('size').value);
+    const satinWidthPx = parseFloat(document.getElementById('width').value);
+    const angleRad = parseFloat(document.getElementById('angle').value) * Math.PI / 180;
+    const densityMm = parseFloat(document.getElementById('density').value);
+
+    pattern = buildPattern(text, fontSizePx, satinWidthPx, angleRad, densityMm);
+
+    const stage = document.getElementById('stage');
+    if (!canvas) {
+      canvas = document.createElement('canvas');
+      stage.append(canvas);
+      ctx = canvas.getContext('2d');
+    }
+    canvas.width = stage.clientWidth;
+    canvas.height = stage.clientHeight;
+
+    // replicate getCanvas()'s fit-to-canvas transform so the preview matches
+    const pixelMultiplier = 3;
+    const plan = pattern.getStitchPlan(canvas.width, canvas.height, pixelMultiplier);
+    const scale = pixelMultiplier / plan.pixelsPerUnit;
+    const tx = 0.5 * (canvas.width - plan.width);
+    const ty = 0.5 * (canvas.height - plan.height);
+
+    displayStitches = [];
+    for (const t of plan.threads) {
+      const hex = rgbToHex(t.thread.red, t.thread.green, t.thread.blue);
+      for (const run of t.runs) {
+        for (let i = 0; i < run.length; i++) {
+          const s = run[i];
+          displayStitches.push({
+            x: s.position.x * scale + tx,
+            y: s.position.y * scale + ty,
+            type: s.stitchType,
+            color: hex,
+            isRunStart: i === 0,
+          });
+        }
+      }
+    }
+
+    // reset the scrub slider to the full sequence
+    const scrub = document.getElementById('scrub');
+    scrub.max = displayStitches.length;
+    scrub.value = displayStitches.length;
+    draw(displayStitches.length);
+
+    refreshDownloadModal();
+  }
+
+  /**
+   * Cheap step: redraw the first `limit` stitches. Called on every scrub tick
+   * without rebuilding the (expensive) pattern.
+   */
+  function draw(limit) {
+    if (!ctx) return;
+    limit = Math.max(0, Math.min(limit, displayStitches.length));
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.lineJoin = 'round';
+    ctx.lineCap = 'round';
+
+    for (let i = 1; i < limit; i++) {
+      const s = displayStitches[i];
+      if (s.isRunStart) continue; // don't connect across separate runs
+      const p = displayStitches[i - 1];
+      if (s.type === StitchType.TRAVEL) {
+        ctx.strokeStyle = '#22dd55'; // travel = green
+        ctx.lineWidth = 1.25;
+      } else if (s.type === StitchType.JUMP) {
+        ctx.strokeStyle = '#2299ff'; // jump = blue
+        ctx.lineWidth = 1.25;
+      } else if (s.type === StitchType.UNDERLAY) {
+        ctx.strokeStyle = 'rgba(230,150,0,0.7)';
+        ctx.lineWidth = 1;
+      } else {
+        ctx.strokeStyle = s.color;
+        ctx.lineWidth = 1.5;
+      }
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(s.x, s.y);
+      ctx.stroke();
+    }
+
+    // mark the current needle position
+    if (limit > 0) {
+      const cur = displayStitches[limit - 1];
+      ctx.fillStyle = '#00e5ff';
+      ctx.beginPath();
+      ctx.arc(cur.x, cur.y, 3, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+
+    document.getElementById('scrubReadout').textContent = `${limit} / ${displayStitches.length}`;
+  }
+
+  // keep a download modal in sync with the current pattern
+  let modal = null;
+  function refreshDownloadModal() {
+    if (modal) modal.container.remove();
+    modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'hersheyText', 10, 500);
+    document.body.appendChild(modal.container);
+    window.addEventListener('click', (e) => { if (e.target === modal.container) modal.close(); });
+  }
+
+  (async function main() {
+    if (Stitch.init) await Stitch.init();
+    await loadFont();
+
+    // AutoRoute does real path-finding work, so debounce a little longer
+    const debounced = Stitch.Browser.Utils.debounce(rebuild, 200);
+    for (const id of ['text', 'size', 'width', 'angle', 'density']) {
+      document.getElementById(id).addEventListener('input', debounced);
+    }
+    // scrubbing only redraws — no pattern rebuild
+    document.getElementById('scrub').addEventListener('input', (e) => draw(parseInt(e.target.value, 10)));
+    window.addEventListener('resize', Stitch.Browser.Utils.debounce(rebuild, 100));
+    window.addEventListener('keydown', (e) => { if (e.code === 'KeyD' && modal) modal.open(); });
+
+    rebuild();
+  })();
+</script>
+</body>
+</html>
