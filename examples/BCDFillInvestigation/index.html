@@ -18,14 +18,14 @@
   const stitchReadout = document.getElementById("stitchReadout");
 
   let polygon;
-  Stitch.init().then(() => fetch("./polygon.json").then(f => {
+  Stitch.init().then(() => fetch("./polygon1.json").then(f => {
     f.json().then(json => {
       const boundingBox = { xMin: Infinity, xMax: -Infinity, yMin: Infinity, yMax: -Infinity };
       for (const v of json.shell) {
         if (v.x < boundingBox.xMin) boundingBox.xMin = v.x;
         if (v.x > boundingBox.xMax) boundingBox.xMax = v.x;
         if (v.y < boundingBox.yMin) boundingBox.yMin = v.y;
-        if (v.y > boundingBox.yMin) boundingBox.yMax = v.y;
+        if (v.y > boundingBox.yMax) boundingBox.yMax = v.y;
       }
       const rings = [json.shell.map(v => [v.x, v.y]), ...json.holes.map(h => h.map(v => [v.x, v.y]))];
       polygon = { boundingBox, rings };
@@ -54,6 +54,7 @@
     const bcdFill = new Stitch.Core.RoutedRuns.RoutedFill(
       { shell: rings[0], holes: rings.slice(1) },
       {
+        angle: 135/360 * 2 * Math.PI,
         underlays: [{ insetMm: 0.5 }],
         // underlays: [],
       }

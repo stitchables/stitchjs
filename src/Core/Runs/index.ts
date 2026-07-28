@@ -14,6 +14,7 @@ import { Redwork } from './Redwork';
 import { StreamlineFill } from './StreamlineFill';
 import { BCDFill } from './BCDFill';
 import { CalligraphySatin } from './CalligraphySatin';
+import { CrossStitchFill } from './CrossStitchFill';
 
 export const Runs = {
   Run,
@@ -32,4 +33,5 @@ export const Runs = {
   StreamlineFill,
   BCDFill,
   CalligraphySatin,
+  CrossStitchFill,
 };

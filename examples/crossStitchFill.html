@@ -1,0 +1,80 @@
+<!doctype html>
+<html>
+<head>
+  <title>Cross Stitch Fill Example</title>
+  <script src="../dist/stitch.global.js"></script>
+  <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
+</head>
+<body>
+<script>
+  const shell = Stitch.Math.Polyline.fromArrays([
+    [40, 210], [40, 120], [120, 40], [200, 120], [200, 300], [120, 340], [40, 300], [40, 210]
+  ]);
+  const holes = [
+    [[95, 130], [145, 130], [145, 180], [95, 180], [95, 130]],
+    [[90, 240], [150, 240], [150, 290], [90, 290], [90, 240]]
+  ].map(h => Stitch.Math.Polyline.fromArrays(h));
+
+  // one panel per cross stitch method
+  const panels = [
+    { label: 'cross', options: {} },
+    { label: 'cross flipped', options: { flipped: true } },
+    { label: 'upright', options: { type: 'upright' } },
+    { label: 'double', options: { type: 'double' } },
+    { label: 'smyrna', options: { type: 'smyrna' } },
+    { label: 'half', options: { type: 'half' } },
+    { label: 'cross dense', options: { dense: true } },
+    { label: 'cross rotated', options: { rotation: Math.PI / 9 } },
+  ];
+
+  const columns = 4;
+  const [panelWidth, panelHeight] = [240, 380];
+  let pattern = new Stitch.Core.Pattern(
+    columns * panelWidth,
+    Math.ceil(panels.length / columns) * panelHeight
+  );
+  let thread = pattern.addThread(30, 60, 120);
+
+  panels.forEach((panel, i) => {
+    const offset = new Stitch.Math.Vector(
+      (i % columns) * panelWidth,
+      Math.floor(i / columns) * panelHeight
+    );
+    const move = (polyline) => polyline.vertices.map(v => v.add(offset));
+    thread.addRun(new Stitch.Core.Runs.CrossStitchFill(
+      move(shell),
+      holes.map(move),
+      {
+        sizeMm: 3,
+        threadCount: 2,
+        coveragePct: 50,
+        stitchLengthMm: 5,
+        startPosition: new Stitch.Math.Vector(40, 300).add(offset),
+        endPosition: new Stitch.Math.Vector(200, 300).add(offset),
+        ...panel.options,
+      }
+    ));
+  });
+
+  let canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
+  canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+  document.body.append(canvas);
+
+  let modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'crossStitchFill', 10, 500);
+  document.body.appendChild(modal.container);
+  window.addEventListener('click', (e) => {
+    if (e.target === modal.container) modal.close();
+  });
+  window.addEventListener('keydown', (e) => {
+    if (e.code === 'KeyD') modal.open();
+  });
+
+  window.addEventListener("resize", Stitch.Browser.Utils.debounce(() => {
+    canvas.remove();
+    canvas = Stitch.Graphics.getCanvas(pattern, window.innerWidth, window.innerHeight, 5);
+    canvas.setAttribute('style', 'margin: auto; position: absolute; inset: 0;');
+    document.body.append(canvas);
+  }, 10));
+</script>
+</body>
+</html>

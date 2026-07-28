@@ -140,6 +140,84 @@ function nearestEdge(ring: Pt[], p: Pt): { edge: number; d: number } {
 }
 
 /**
+ * The stretch of b1b2 that runs along a1a2, or null when the two segments are
+ * not collinear or do not overlap. `tol` is the absolute distance within which
+ * b's endpoints must sit on a's line to count as collinear.
+ */
+function collinearOverlap(a1: Pt, a2: Pt, b1: Pt, b2: Pt, tol: number): [Pt, Pt] | null {
+  const len = dist(a1, a2);
+  if (len <= tol) return null;
+  const ux = (a2.x - a1.x) / len,
+    uy = (a2.y - a1.y) / len;
+  const off = (p: Pt) => -(p.x - a1.x) * uy + (p.y - a1.y) * ux;
+  if (Math.abs(off(b1)) > tol || Math.abs(off(b2)) > tol) return null;
+  const proj = (p: Pt) => (p.x - a1.x) * ux + (p.y - a1.y) * uy;
+  const t1 = proj(b1),
+    t2 = proj(b2);
+  const lo = Math.max(0, Math.min(t1, t2)),
+    hi = Math.min(len, Math.max(t1, t2));
+  if (hi - lo <= tol) return null;
+  return [
+    { x: a1.x + lo * ux, y: a1.y + lo * uy },
+    { x: a1.x + hi * ux, y: a1.y + hi * uy },
+  ];
+}
+
+/**
+ * The stretches two rings share, recovered geometrically as the collinear
+ * overlaps of their edges. Used for cell pairs the DCEL fails to twin (see
+ * the portal recovery in planTour); the result lies on BOTH rings, so it is
+ * inside the polygon by construction.
+ */
+function sharedBoundary(ringA: Pt[], ringB: Pt[], tol: number): Array<[Pt, Pt]> {
+  const out: Array<[Pt, Pt]> = [];
+  const na = ringA.length,
+    nb = ringB.length;
+  for (let i = 0; i < na; i++) {
+    const a1 = ringA[i],
+      a2 = ringA[(i + 1) % na];
+    for (let j = 0; j < nb; j++) {
+      const seg = collinearOverlap(a1, a2, ringB[j], ringB[(j + 1) % nb], tol);
+      if (seg) out.push(seg);
+    }
+  }
+  return out;
+}
+
+/**
+ * Midpoint of the closest pair of points on two rings — a point on (or
+ * between, when they only come near) both boundaries, never outside either
+ * cell the way a midpoint of two centroids can be.
+ */
+function ringsClosestPoint(ringA: Pt[], ringB: Pt[]): Pt {
+  let best = ringA[0],
+    bd = Infinity;
+  const scan = (from: Pt[], onto: Pt[]) => {
+    const n = onto.length;
+    for (const p of from) {
+      for (let i = 0; i < n; i++) {
+        const a = onto[i],
+          b = onto[(i + 1) % n];
+        const dx = b.x - a.x,
+          dy = b.y - a.y;
+        const l2 = dx * dx + dy * dy;
+        let t = l2 > 0 ? ((p.x - a.x) * dx + (p.y - a.y) * dy) / l2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        const q = { x: a.x + t * dx, y: a.y + t * dy };
+        const d = dist(p, q);
+        if (d < bd) {
+          bd = d;
+          best = midPt(p, q);
+        }
+      }
+    }
+  };
+  scan(ringA, ringB);
+  scan(ringB, ringA);
+  return best;
+}
+
+/**
  * The two boundary arcs from `a` (on edge `ea` of `ring`) to `b` (on edge
  * `eb`), one walking the ring forward and one backward.
  */
@@ -680,6 +758,31 @@ export class BCDFill implements IRun {
       if (!entry) portals.set(key, (entry = { segs: [], mid: { x: 0, y: 0 } }));
       entry.segs.push([dec.vertices[h.origin], dec.vertices[t.origin]]);
     });
+    // T-junction normalisation fails on a DEGENERATE SWEEP — when several
+    // critical vertices share one sweep coordinate, the two sides of a cut can
+    // come out subdivided differently, so those half-edges have no twin in a
+    // bounded face and the pass above records no portal even though dec.graph
+    // still calls the cells adjacent. Recover the shared stretch from the cell
+    // rings themselves (collinear overlaps); if the cells genuinely only touch
+    // at a point, use that point. Either way EVERY adjacent pair ends up with
+    // a portal lying on both cells' boundary, which is what makes the exit
+    // anchors the tour hops toward safe: the old fallback here was the
+    // midpoint of the two CENTROIDS, and for non-convex cells that point can
+    // sit well outside the polygon, sending a travel leg out of the shape.
+    const shareTol = 1e-6 * diag;
+    for (let i = 0; i < adjacency.length; i++) {
+      for (const j of adjacency[i]) {
+        if (i === j || !faces[i] || !faces[j]) continue;
+        const key = pairKey(i, j);
+        if (portals.has(key)) continue;
+        const segs = sharedBoundary(faces[i], faces[j], shareTol);
+        if (!segs.length) {
+          const q = ringsClosestPoint(faces[i], faces[j]);
+          segs.push([q, q]);
+        }
+        portals.set(key, { segs, mid: { x: 0, y: 0 } });
+      }
+    }
     // Portal crossing point: midpoint of the longest shared piece.
     for (const entry of portals.values()) {
       let best = entry.segs[0],
@@ -693,9 +796,14 @@ export class BCDFill implements IRun {
       }
       entry.mid = midPt(best[0], best[1]);
     }
+    // Defensive only — the recovery above gives every adjacent pair a portal.
+    // Never a midpoint of centroids: that point has no relation to either
+    // cell's boundary and for non-convex cells is not even inside the polygon.
+    const portalFallback = (i: number, j: number): Pt =>
+      faces[i] && faces[j] ? ringsClosestPoint(faces[i], faces[j]) : centers[i];
     const portalMid = (i: number, j: number): Pt => {
       const entry = portals.get(pairKey(i, j));
-      return entry ? entry.mid : midPt(centers[i], centers[j]); // degenerate adjacency
+      return entry ? entry.mid : portalFallback(i, j);
     };
     // Closest point to `p` on any piece of the portal between faces i and j.
     // Used as the exit anchor after a fill: the lane march ends beside the
@@ -704,7 +812,7 @@ export class BCDFill implements IRun {
     // to its midpoint.
     const portalClosest = (i: number, j: number, p: Pt): Pt => {
       const entry = portals.get(pairKey(i, j));
-      if (!entry) return midPt(centers[i], centers[j]);
+      if (!entry) return portalFallback(i, j);
       let best = entry.mid,
         bd = Infinity;
       for (const [a, b] of entry.segs) {
@@ -1145,10 +1253,9 @@ export class BCDFill implements IRun {
     };
 
     // Hop from the end of a fresh fill to the exit portal without recrossing
-    // the fill lines: straight when the segment stays inside the cell (a cell
-    // is simply connected, so "crosses no ring edge" ⇒ inside) and clear of
-    // the lanes; otherwise along the cell boundary, choosing the arc that
-    // passes the fewest lane ends (the exit-side arc, since lanes march
+    // the fill lines: straight when the segment stays inside the cell and
+    // clear of the lanes; otherwise along the cell boundary, choosing the arc
+    // that passes the fewest lane ends (the exit-side arc, since lanes march
     // toward the exit). Returns null when the fill was empty or nothing safe
     // was found.
     const exitHop = (cell: number, corners: Pt[], exit: Pt): Pt[] | null => {
@@ -1171,7 +1278,25 @@ export class BCDFill implements IRun {
         return false;
       };
 
-      if (!crossesRing(last, exit) && !crossesFill(last, exit)) return [last, exit];
+      // "Crosses no ring edge" does NOT imply "stays inside the cell", even
+      // though a cell is simply connected: BOTH endpoints sit ON the ring, so
+      // a segment can leave the cell exactly AT an endpoint — heading outward
+      // from the edge that endpoint stands on — and run its whole length
+      // outside without ever properly crossing anything. Sample the interior
+      // to reject that, the same guard straightClear() applies to region legs.
+      // A segment riding ALONG a ring edge (both ends on one cut, say) samples
+      // ON the ring rather than strictly inside, and is fine, so on-ring
+      // counts as in.
+      const inOrOnCell = (a: Pt, b: Pt): boolean => {
+        const onTol = 1e-6 * diag;
+        for (const t of [0.25, 0.5, 0.75]) {
+          const q = { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
+          if (!pointInRing(q, ring) && nearestEdge(ring, q).d > onTol) return false;
+        }
+        return true;
+      };
+      if (!crossesRing(last, exit) && !crossesFill(last, exit) && inOrOnCell(last, exit))
+        return [last, exit];
 
       // Boundary walk: locate both points on the ring, build the two arcs.
       const ei = nearestEdge(ring, last).edge,
