@@ -749,7 +749,7 @@ class CrossStitchBuilder {
     let cursor =
       firstIndex >= 0
         ? representative(components[firstIndex])
-        : (this.startPosition ?? null);
+        : this.startPosition ?? null;
     while (remaining.length > 0) {
       let pick = 0;
       if (cursor !== null) {
@@ -1020,7 +1020,7 @@ class CrossStitchBuilder {
           : previous >= 0
             ? this.vectorAt(previous)
             : null;
-      const endHint = index === lastIndex ? (this.endPosition ?? null) : null;
+      const endHint = index === lastIndex ? this.endPosition ?? null : null;
       const chains = this.orderChains(this.diagonalChains(component), startHint, endHint);
       for (const chain of chains) {
         if (previous === -1) emitter.moveTo(this.vectorAt(chain[0]), StitchType.NORMAL);

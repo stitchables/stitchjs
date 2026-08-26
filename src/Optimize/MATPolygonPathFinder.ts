@@ -188,10 +188,20 @@ export default class MATPolygonPathFinder implements IPolygonPathFinder {
           }
           prev = vertices[1];
         }
-        boundary.push(boundary[0]);
-        // insert the cell into the tree
+        const coords: Coordinate[] = [];
+        for (const pt of boundary) {
+          const prevPt = coords[coords.length - 1];
+          if (!prevPt || prevPt.x !== pt.x || prevPt.y !== pt.y) coords.push(pt);
+        }
+        if (coords.length === 0) continue;
+        const first = coords[0];
+        const last = coords[coords.length - 1];
+        if (first.x !== last.x || first.y !== last.y) coords.push(first);
+        // A LinearRing needs 0 or >= 4 points; degenerate voronoi cells (a
+        // collapsed line) show up as 2–3 coords and are not usable anyway.
+        if (coords.length < 4) continue;
         const geometry = TopologyPreservingSimplifier.simplify(
-          geometryFactory.createPolygon(geometryFactory.createLinearRing(boundary)),
+          geometryFactory.createPolygon(geometryFactory.createLinearRing(coords)),
           0.00001,
         );
         this.cellTree.insert(geometry.getEnvelopeInternal(), { geometry, spine });

@@ -324,14 +324,14 @@ export class ClassicSatin implements IRun {
     const splitPx = this.split.maxWidthMm * pixelsPerMm;
     const finalCoords: Coordinate[] = [rawCoords[0]];
     for (let i = 1; i < rawCoords.length; i++) {
-      const crossIdx = i % 2 === 1 ? (i - 1) / 2 : undefined;
       const segment = { a: rawCoords[i - 1], b: rawCoords[i] };
       for (const coord of this.splitSegment(
         segment,
         this.split,
         splitPx,
-        crossIdx,
+        i - 1,
         pixelsPerMm,
+        i % 2 === 1,
       )) {
         finalCoords.push(coord);
       }
@@ -343,8 +343,9 @@ export class ClassicSatin implements IRun {
     segment: { a: Coordinate; b: Coordinate },
     split: SatinSplitOptions,
     splitPx: number,
-    crossIdx: number | undefined,
+    crossIdx: number,
     pixelsPerMm: number,
+    fromLeft: boolean,
   ): Coordinate[] {
     const { a, b } = segment;
     const dist = a.distance(b);
@@ -354,27 +355,29 @@ export class ClassicSatin implements IRun {
 
     const staggerCycles = split.staggerCycles;
     const staggerEnabled = staggerCycles !== undefined && staggerCycles > 1;
-    if (staggerEnabled && crossIdx === undefined) {
-      return [b];
-    }
-
     const numSegments = Math.ceil(dist / splitPx);
-    const rowShift =
-      staggerEnabled && crossIdx !== undefined
-        ? this.getStaggerRowShift(
-            crossIdx,
-            staggerCycles,
-            split,
-            dist,
-            numSegments,
-            splitPx,
-            pixelsPerMm,
-          )
-        : 0;
+    const endPad = (dist - (numSegments - 2) * splitPx) / 2;
+    const rowShift = staggerEnabled
+      ? this.getStaggerRowShift(
+          crossIdx,
+          staggerCycles,
+          split,
+          dist,
+          numSegments,
+          splitPx,
+          pixelsPerMm,
+        )
+      : 0;
+
+    const us: number[] = [];
+    for (let j = 1; j < numSegments; j++) {
+      us.push(Math.max(0, Math.min(1, (endPad + (j - 1) * splitPx) / dist + rowShift)));
+    }
+    if (!fromLeft) us.reverse();
 
     const coords: Coordinate[] = [];
-    for (let j = 1; j < numSegments; j++) {
-      const t = Math.max(0, Math.min(1, j / numSegments + rowShift));
+    for (const u of us) {
+      const t = fromLeft ? u : 1 - u;
       const p = Vector.fromObject(a).lerp(Vector.fromObject(b), t);
       coords.push(new Coordinate(p.x, p.y));
     }
@@ -396,9 +399,10 @@ export class ClassicSatin implements IRun {
     const staggerAmountMm = split.staggerAmountMm ?? 2;
     const maxOffsetT = Math.min((staggerAmountMm * pixelsPerMm) / dist, slotWidthT);
     const tierFill = Math.min(1, dist / (numSegments * splitPx));
-    const magnitudeScale = ((crossIdx % staggerCycles) + 1) / staggerCycles;
-    const direction = crossIdx % 2 === 0 ? -1 : 1;
-    return direction * maxOffsetT * tierFill * magnitudeScale;
+    const phase = crossIdx % staggerCycles;
+    const half = (staggerCycles - 1) / 2;
+    const centered = half === 0 ? 0 : (phase - half) / half;
+    return centered * maxOffsetT * tierFill;
   }
 
   getUnderlayOptionsOrDefault(
