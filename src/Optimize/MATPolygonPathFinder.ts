@@ -168,7 +168,7 @@ export default class MATPolygonPathFinder implements IPolygonPathFinder {
         else prev = curr.to;
       }
 
-      if (edgeSequence.length > 0) {
+      if (edgeSequence.length > 1) {
         // construct the cell boundary points, we need to be careful here because when
         // two edges are directly connected we need to drop the shared endpoint from one
         // but if they are separated by non-internal edges we need to keep both endpoints

@@ -1,6 +1,7 @@
 <!doctype html>
 <html>
 <head>
+  <meta charset="utf-8">
   <title>Split Satin Example</title>
   <script src="../dist/stitch.global.js"></script>
   <script>window.Stitch || document.write('<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>')</script>
@@ -9,12 +10,35 @@
     #labels { position: fixed; top: 12px; left: 12px; pointer-events: none; }
     #render { position: absolute; inset: 0; }
     #render canvas { position: absolute; inset: 0; margin: auto; pointer-events: none; }
+    #scrubber {
+      position: fixed;
+      z-index: 1;
+      right: 16px;
+      bottom: 16px;
+      left: 16px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 10px 12px;
+      border: 1px solid #ccc;
+      border-radius: 8px;
+      background: rgb(255 255 255 / 90%);
+      box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+    }
+    #stitch-slider { flex: 1; min-width: 0; }
+    #stitch-count { min-width: 9em; text-align: right; font-variant-numeric: tabular-nums; }
   </style>
 </head>
 <body>
 <div id="labels">1: no split · 2: split · 3: stagger · 4: square stagger</div>
 <div id="render"></div>
-<script>
+<label id="scrubber">
+  Stitch
+  <input id="stitch-slider" type="range" min="0" max="0" value="0" step="1">
+  <output id="stitch-count" for="stitch-slider">0 / 0</output>
+</label>
+<script type="module">
+  await Stitch.init();
   function makeTaperedSatin(centerX, topY, length, startWidth, endWidth, steps) {
     const vertices = [];
     for (let i = 0; i <= steps; i++) {
@@ -53,37 +77,79 @@
     ),
   ]));
 
+  const slider = document.getElementById('stitch-slider');
+  const stitchCount = document.getElementById('stitch-count');
+  const container = document.getElementById('render');
+  let drawCurrentPlan = () => {};
+
   function render() {
     const w = window.innerWidth;
     const h = window.innerHeight;
-    const container = document.getElementById('render');
     container.replaceChildren();
-
-    const canvas = Stitch.Graphics.getCanvas(pattern, w, h, 5, 1.5);
-    container.append(canvas);
 
     const plan = pattern.getStitchPlan(w, h, 5);
     const scale = 5 / plan.pixelsPerUnit;
     const translate = new Stitch.Math.Vector(0.5 * (w - plan.width), 0.5 * (h - plan.height));
-    const dots = document.createElement('canvas');
-    dots.width = w;
-    dots.height = h;
-    const ctx = dots.getContext('2d');
-    container.append(dots);
+    const canvas = document.createElement('canvas');
+    canvas.width = w;
+    canvas.height = h;
+    container.append(canvas);
 
-    for (const t of plan.threads) {
-      for (const run of t.runs) {
-        for (const stitch of run) {
-          if (stitch.stitchType !== 0) continue;
-          const p = stitch.position.multiply(scale).add(translate);
-          ctx.fillStyle = '#000';
-          ctx.fillRect(p.x, p.y, 2, 2);
+    const wasAtEnd = Number(slider.value) === Number(slider.max);
+    slider.max = plan.stitchCount;
+    slider.value = wasAtEnd ? plan.stitchCount : Math.min(Number(slider.value), plan.stitchCount);
+
+    drawCurrentPlan = () => {
+      const limit = Number(slider.value);
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, w, h);
+      ctx.lineWidth = 1.5;
+      ctx.lineJoin = 'round';
+      ctx.strokeStyle = '#be3737';
+
+      let index = 0;
+      let currentPosition;
+      for (const t of plan.threads) {
+        for (const run of t.runs) {
+          for (let i = 0; i < run.length && index < limit; i++, index++) {
+            const stitch = run[i];
+            const p = stitch.position.multiply(scale).add(translate);
+            currentPosition = p;
+
+            if (i > 0) {
+              const previous = run[i - 1].position.multiply(scale).add(translate);
+              ctx.beginPath();
+              ctx.moveTo(previous.x, previous.y);
+              ctx.lineTo(p.x, p.y);
+              ctx.stroke();
+            }
+
+            if (stitch.stitchType === 0) {
+              ctx.fillStyle = '#000';
+              ctx.fillRect(p.x, p.y, 2, 2);
+            }
+          }
         }
       }
-    }
+
+      if (currentPosition) {
+        ctx.fillStyle = '#fff';
+        ctx.strokeStyle = '#1677c8';
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.arc(currentPosition.x, currentPosition.y, 4, 0, 2 * Math.PI);
+        ctx.fill();
+        ctx.stroke();
+      }
+
+      stitchCount.value = `${limit.toLocaleString()} / ${plan.stitchCount.toLocaleString()}`;
+    };
+
+    drawCurrentPlan();
   }
 
   render();
+  slider.addEventListener('input', () => drawCurrentPlan());
 
   const modal = Stitch.Browser.Modal.createDownloadModal(pattern, 'splitSatinExample', 10, 500);
   document.body.appendChild(modal.container);
