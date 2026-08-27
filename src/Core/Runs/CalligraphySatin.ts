@@ -1,6 +1,12 @@
 import { IRun } from '../IRun';
 import { Vector } from '../../Math/Vector';
-import { ClassicSatin, SatinSplitOptions, UnderlayOptions } from './ClassicSatin';
+import {
+  ClassicSatin,
+  SatinFractionalSpacingOptions,
+  SatinShorteningOptions,
+  SatinSplitOptions,
+  UnderlayOptions,
+} from './ClassicSatin';
 
 export class CalligraphySatin implements IRun {
   centerLine: Vector[];
@@ -13,6 +19,8 @@ export class CalligraphySatin implements IRun {
     travelLengthMm: number;
     travelToleranceMm: number;
     split: SatinSplitOptions | undefined;
+    shortening: SatinShorteningOptions | undefined;
+    fractionalSpacing: SatinFractionalSpacingOptions | undefined;
     underlays: { type: string; options?: UnderlayOptions }[];
   };
   constructor(
@@ -26,6 +34,8 @@ export class CalligraphySatin implements IRun {
       travelLengthMm?: number;
       travelToleranceMm?: number;
       split?: SatinSplitOptions;
+      shortening?: SatinShorteningOptions;
+      fractionalSpacing?: SatinFractionalSpacingOptions;
       underlays?: { type: string; options?: UnderlayOptions }[];
     },
   ) {
@@ -39,6 +49,8 @@ export class CalligraphySatin implements IRun {
       travelLengthMm: options?.travelLengthMm ?? 3,
       travelToleranceMm: options?.travelToleranceMm ?? 1,
       split: options?.split,
+      shortening: options?.shortening,
+      fractionalSpacing: options?.fractionalSpacing,
       underlays: options?.underlays ?? [],
     };
   }

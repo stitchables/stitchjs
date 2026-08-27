@@ -2,7 +2,12 @@ import { IRoutedRun } from './IRoutedRun';
 import { Vector } from '../../Math/Vector';
 import { Stitch } from '../Stitch';
 import { Coordinate, Polygon } from 'jsts/org/locationtech/jts/geom';
-import { SatinSplitOptions, UnderlayOptions } from '../Runs/ClassicSatin';
+import {
+  SatinFractionalSpacingOptions,
+  SatinShorteningOptions,
+  SatinSplitOptions,
+  UnderlayOptions,
+} from '../Runs/ClassicSatin';
 import { RoutedSatin } from './RoutedSatin';
 
 export class RoutedCalligraphySatin implements IRoutedRun {
@@ -17,6 +22,8 @@ export class RoutedCalligraphySatin implements IRoutedRun {
       travelLengthMm?: number;
       travelToleranceMm?: number;
       split?: SatinSplitOptions;
+      shortening?: SatinShorteningOptions;
+      fractionalSpacing?: SatinFractionalSpacingOptions;
       underlays?: { type: string; options?: UnderlayOptions }[];
       routeAsHole?: boolean;
     },
@@ -34,6 +41,8 @@ export class RoutedCalligraphySatin implements IRoutedRun {
       travelLengthMm: options?.travelLengthMm ?? 3,
       travelToleranceMm: options?.travelToleranceMm ?? 1,
       split: options?.split,
+      shortening: options?.shortening,
+      fractionalSpacing: options?.fractionalSpacing,
       underlays: options?.underlays ?? [],
     });
     this.routeAsHole = options?.routeAsHole ?? true;

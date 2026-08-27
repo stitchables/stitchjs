@@ -5,7 +5,12 @@ import { Coordinate, Polygon } from 'jsts/org/locationtech/jts/geom';
 import CascadedPolygonUnion from 'jsts/org/locationtech/jts/operation/union/CascadedPolygonUnion';
 import Arrays from 'jsts/java/util/Arrays';
 import { geometryFactory } from '../../util/jsts';
-import { ClassicSatin, SatinSplitOptions } from '../Runs/ClassicSatin';
+import {
+  ClassicSatin,
+  SatinFractionalSpacingOptions,
+  SatinShorteningOptions,
+  SatinSplitOptions,
+} from '../Runs/ClassicSatin';
 
 interface UnderlayOptions {
   stitchLengthMm?: number;
@@ -23,6 +28,8 @@ export class RoutedSatin implements IRoutedRun {
   travelLengthMm: number;
   travelToleranceMm: number;
   split: SatinSplitOptions | undefined;
+  shortening: SatinShorteningOptions | undefined;
+  fractionalSpacing: SatinFractionalSpacingOptions | undefined;
   underlays: {
     type: string;
     options?: UnderlayOptions;
@@ -36,6 +43,8 @@ export class RoutedSatin implements IRoutedRun {
       travelLengthMm?: number;
       travelToleranceMm?: number;
       split?: SatinSplitOptions;
+      shortening?: SatinShorteningOptions;
+      fractionalSpacing?: SatinFractionalSpacingOptions;
       underlays?: {
         type: string;
         options?: UnderlayOptions;
@@ -48,6 +57,8 @@ export class RoutedSatin implements IRoutedRun {
     this.travelLengthMm = options?.travelLengthMm ?? 3;
     this.travelToleranceMm = options?.travelToleranceMm ?? 0.1;
     this.split = options?.split;
+    this.shortening = options?.shortening;
+    this.fractionalSpacing = options?.fractionalSpacing;
     this.underlays = options?.underlays ?? [];
     this.routeAsHole = options?.routeAsHole ?? true;
   }
@@ -104,6 +115,8 @@ export class RoutedSatin implements IRoutedRun {
       travelLengthMm: this.travelLengthMm,
       travelToleranceMm: this.travelToleranceMm,
       split: this.split,
+      shortening: this.shortening,
+      fractionalSpacing: this.fractionalSpacing,
     };
     const classicSatin = new ClassicSatin(this.quadStripVertices, options);
     return classicSatin.getStitches(pixelsPerMm);

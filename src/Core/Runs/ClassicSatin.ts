@@ -29,6 +29,45 @@ export interface SatinSplitOptions {
   staggerAmountMm?: number;
 }
 
+export interface SatinShorteningOptions {
+  /** Shorten when same-side spacing falls below this percentage of nominal spacing. */
+  triggerSpacingPercent?: number;
+  /** Maximum shortened penetrations in a row. Values are limited to 0-5. */
+  maxConsecutive?: number;
+  /** Row n - 1 contains stitch-length percentages for a run of n short stitches. */
+  lengthPercentByRunLength?: number[][];
+  /** Shuffle each run's percentages to avoid a repeating visual line. */
+  randomize?: boolean;
+  /** Makes randomized shortening repeatable. */
+  randomSeed?: number;
+}
+
+export interface SatinFractionalSpacingOptions {
+  /** Spacing reference across the column: 0 is the outside edge, 1 is inside. */
+  offsetFraction: number;
+}
+
+interface SatinRow {
+  left: Coordinate;
+  right: Coordinate;
+}
+
+interface SatinSpacingMetric {
+  segmentLengths: number[];
+  cumulativeLengths: number[];
+  totalLength: number;
+}
+
+type SatinSide = 'left' | 'right';
+
+const DEFAULT_SHORTENING_LENGTH_PERCENT: number[][] = [
+  [80],
+  [85, 72],
+  [70, 90, 70],
+  [70, 90, 80, 70],
+  [70, 87, 65, 83, 70],
+];
+
 interface SatinLineData {
   line: LineString;
   len: number;
@@ -45,6 +84,8 @@ export class ClassicSatin implements IRun {
   travelLengthMm: number;
   travelToleranceMm: number;
   split: SatinSplitOptions | undefined;
+  shortening: SatinShorteningOptions | undefined;
+  fractionalSpacing: SatinFractionalSpacingOptions | undefined;
   underlays: { type: string; options?: UnderlayOptions }[];
   lineData: { left: SatinLineData; right: SatinLineData; center: SatinLineData };
   isClosed: boolean;
@@ -58,6 +99,8 @@ export class ClassicSatin implements IRun {
       travelLengthMm?: number;
       travelToleranceMm?: number;
       split?: SatinSplitOptions;
+      shortening?: SatinShorteningOptions;
+      fractionalSpacing?: SatinFractionalSpacingOptions;
       underlays?: { type: string; options?: UnderlayOptions }[];
     },
   ) {
@@ -75,6 +118,8 @@ export class ClassicSatin implements IRun {
     this.travelLengthMm = options?.travelLengthMm ?? 3;
     this.travelToleranceMm = options?.travelToleranceMm ?? 1;
     this.split = options?.split;
+    this.shortening = options?.shortening;
+    this.fractionalSpacing = options?.fractionalSpacing;
     this.underlays = options?.underlays ?? [];
   }
 
@@ -304,18 +349,33 @@ export class ClassicSatin implements IRun {
   }
 
   getFullSatin(pixelsPerMm: number): LineString {
-    const countCrosses =
-      Math.round(this.lineData.center.len / (this.densityMm * pixelsPerMm)) + 1;
-    const rawCoords: Coordinate[] = [];
+    const spacingMetric = this.fractionalSpacing
+      ? this.getFractionalSpacingMetric(this.fractionalSpacing.offsetFraction)
+      : undefined;
+    const samplingLength = spacingMetric?.totalLength ?? this.lineData.center.len;
+    const countCrosses = Math.round(samplingLength / (this.densityMm * pixelsPerMm)) + 1;
+    const rows: SatinRow[] = [];
     for (let i = 0; i < (this.isClosed ? countCrosses : countCrosses + 1); i++) {
-      const locationIndex = this.lineData.center.lenLocMap.getLocation(
-        (i / countCrosses) * this.lineData.center.len,
-      );
+      const sampleFraction = i / countCrosses;
+      const locationIndex = spacingMetric
+        ? this.getFractionalSpacingLocation(
+            sampleFraction * spacingMetric.totalLength,
+            sampleFraction,
+            spacingMetric,
+          )
+        : this.lineData.center.lenLocMap.getLocation(
+            sampleFraction * this.lineData.center.len,
+          );
       const left: Coordinate = this.lineData.left.locIndex.extractPoint(locationIndex);
       const right: Coordinate = this.lineData.right.locIndex.extractPoint(locationIndex);
-      rawCoords.push(left);
-      rawCoords.push(right);
+      rows.push({ left, right });
     }
+
+    const finalRows = this.shortening
+      ? this.applyStitchShortening(rows, pixelsPerMm)
+      : rows;
+    const originalCoords = rows.flatMap(({ left, right }) => [left, right]);
+    const rawCoords = finalRows.flatMap(({ left, right }) => [left, right]);
 
     if (this.split === undefined || this.split.maxWidthMm <= 0) {
       return geometryFactory.createLineString(rawCoords);
@@ -324,9 +384,14 @@ export class ClassicSatin implements IRun {
     const splitPx = this.split.maxWidthMm * pixelsPerMm;
     const finalCoords: Coordinate[] = [rawCoords[0]];
     for (let i = 1; i < rawCoords.length; i++) {
-      const segment = { a: rawCoords[i - 1], b: rawCoords[i] };
-      for (const coord of this.splitSegment(
-        segment,
+      const originalSegment = {
+        a: originalCoords[i - 1],
+        b: originalCoords[i],
+      };
+      const shortenedSegment = { a: rawCoords[i - 1], b: rawCoords[i] };
+      for (const coord of this.getRetainedSplitPoints(
+        originalSegment,
+        shortenedSegment,
         this.split,
         splitPx,
         i,
@@ -334,8 +399,274 @@ export class ClassicSatin implements IRun {
       )) {
         finalCoords.push(coord);
       }
+      finalCoords.push(shortenedSegment.b);
     }
     return geometryFactory.createLineString(finalCoords);
+  }
+
+  private getFractionalSpacingMetric(offsetFraction: number): SatinSpacingMetric {
+    const fraction = Number.isFinite(offsetFraction)
+      ? Math.max(0, Math.min(1, offsetFraction))
+      : 0.5;
+    const segmentLengths: number[] = [];
+    const cumulativeLengths: number[] = [];
+    let totalLength = 0;
+
+    for (let i = 0; i + 3 < this.quadStripVertices.length; i += 2) {
+      const leftLength = this.quadStripVertices[i].distance(
+        this.quadStripVertices[i + 2],
+      );
+      const rightLength = this.quadStripVertices[i + 1].distance(
+        this.quadStripVertices[i + 3],
+      );
+      const outsideLength = Math.max(leftLength, rightLength);
+      const insideLength = Math.min(leftLength, rightLength);
+      const segmentLength = outsideLength * (1 - fraction) + insideLength * fraction;
+      segmentLengths.push(segmentLength);
+      totalLength += segmentLength;
+      cumulativeLengths.push(totalLength);
+    }
+
+    return { segmentLengths, cumulativeLengths, totalLength };
+  }
+
+  private getFractionalSpacingLocation(
+    targetLength: number,
+    fallbackFraction: number,
+    metric: SatinSpacingMetric,
+  ): LinearLocation {
+    if (metric.segmentLengths.length === 0) {
+      return new LinearLocation(0, 0);
+    }
+    if (metric.totalLength <= 1e-7) {
+      const lastSegmentIndex = metric.segmentLengths.length - 1;
+      const scaledIndex = fallbackFraction * metric.segmentLengths.length;
+      const segmentIndex = Math.min(lastSegmentIndex, Math.floor(scaledIndex));
+      return new LinearLocation(segmentIndex, Math.min(1, scaledIndex - segmentIndex));
+    }
+
+    const clampedTarget = Math.max(0, Math.min(metric.totalLength, targetLength));
+    let low = 0;
+    let high = metric.cumulativeLengths.length - 1;
+    while (low < high) {
+      const middle = Math.floor((low + high) / 2);
+      if (clampedTarget <= metric.cumulativeLengths[middle]) high = middle;
+      else low = middle + 1;
+    }
+
+    const segmentStart = low === 0 ? 0 : metric.cumulativeLengths[low - 1];
+    const segmentLength = metric.segmentLengths[low];
+    const segmentFraction =
+      segmentLength > 1e-7
+        ? Math.max(0, Math.min(1, (clampedTarget - segmentStart) / segmentLength))
+        : 0;
+    return new LinearLocation(low, segmentFraction);
+  }
+
+  private applyStitchShortening(rows: SatinRow[], pixelsPerMm: number): SatinRow[] {
+    if (rows.length < 2 || this.shortening === undefined) {
+      return rows;
+    }
+
+    const triggerSpacingPercent = Math.max(
+      0,
+      Math.min(100, this.shortening.triggerSpacingPercent ?? 50),
+    );
+    const maxConsecutive = Math.max(
+      0,
+      Math.min(5, Math.floor(this.shortening.maxConsecutive ?? 5)),
+    );
+    if (triggerSpacingPercent <= 0 || maxConsecutive <= 0) {
+      return rows;
+    }
+
+    const thresholdPx = this.densityMm * pixelsPerMm * (triggerSpacingPercent / 100);
+    const candidates: (SatinSide | undefined)[] = new Array(rows.length).fill(undefined);
+    const firstIndex = this.isClosed ? 0 : 1;
+    const endIndex = this.isClosed ? rows.length : rows.length - 1;
+
+    for (let i = firstIndex; i < endIndex; i++) {
+      const previousIndex = (i - 1 + rows.length) % rows.length;
+      const leftSpacing = rows[i].left.distance(rows[previousIndex].left);
+      const rightSpacing = rows[i].right.distance(rows[previousIndex].right);
+      const insideSpacing = Math.min(leftSpacing, rightSpacing);
+
+      if (insideSpacing < thresholdPx && Math.abs(leftSpacing - rightSpacing) > 1e-7) {
+        candidates[i] = leftSpacing < rightSpacing ? 'left' : 'right';
+      }
+    }
+
+    const shortenedRows = rows.map(({ left, right }) => ({
+      left: new Coordinate(left.x, left.y),
+      right: new Coordinate(right.x, right.y),
+    }));
+    const random = this.createShorteningRandom(this.shortening.randomSeed ?? 0);
+    const randomize = this.shortening.randomize ?? true;
+    const applyGroup = (indices: number[]) => {
+      const percentages = this.getShorteningPercentages(indices.length);
+      if (randomize) {
+        this.shuffleShorteningPercentages(percentages, random);
+      }
+
+      for (let i = 0; i < indices.length; i++) {
+        const rowIndex = indices[i];
+        const side = candidates[rowIndex];
+        if (side === undefined) continue;
+
+        const ratio = percentages[i] / 100;
+        const original = rows[rowIndex];
+        if (side === 'left') {
+          shortenedRows[rowIndex].left = new Coordinate(
+            original.right.x + (original.left.x - original.right.x) * ratio,
+            original.right.y + (original.left.y - original.right.y) * ratio,
+          );
+        } else {
+          shortenedRows[rowIndex].right = new Coordinate(
+            original.left.x + (original.right.x - original.left.x) * ratio,
+            original.left.y + (original.right.y - original.left.y) * ratio,
+          );
+        }
+      }
+    };
+
+    const applyLinearRuns = (orderedIndices: number[]) => {
+      let cursor = 0;
+      while (cursor < orderedIndices.length) {
+        while (
+          cursor < orderedIndices.length &&
+          candidates[orderedIndices[cursor]] === undefined
+        ) {
+          cursor++;
+        }
+        const runStart = cursor;
+        while (
+          cursor < orderedIndices.length &&
+          candidates[orderedIndices[cursor]] !== undefined
+        ) {
+          cursor++;
+        }
+
+        let groupStart = runStart;
+        while (groupStart < cursor) {
+          const remaining = cursor - groupStart;
+          const groupLength = Math.min(maxConsecutive, remaining);
+          applyGroup(orderedIndices.slice(groupStart, groupStart + groupLength));
+          groupStart += groupLength;
+          if (groupStart < cursor) {
+            groupStart++;
+          }
+        }
+      }
+    };
+
+    if (!this.isClosed) {
+      applyLinearRuns(rows.map((_, index) => index));
+      return shortenedRows;
+    }
+
+    const normalIndex = candidates.findIndex((side) => side === undefined);
+    if (normalIndex >= 0) {
+      const orderedIndices = rows.map(
+        (_, offset) => (normalIndex + 1 + offset) % rows.length,
+      );
+      applyLinearRuns(orderedIndices);
+      return shortenedRows;
+    }
+
+    if (rows.length <= maxConsecutive) {
+      applyGroup(rows.map((_, index) => index));
+      return shortenedRows;
+    }
+
+    const normalCount = Math.ceil(rows.length / (maxConsecutive + 1));
+    const shortenedCount = rows.length - normalCount;
+    const baseGroupLength = Math.floor(shortenedCount / normalCount);
+    const longerGroupCount = shortenedCount % normalCount;
+    let rowIndex = 0;
+    for (let groupIndex = 0; groupIndex < normalCount; groupIndex++) {
+      const groupLength = baseGroupLength + (groupIndex < longerGroupCount ? 1 : 0);
+      applyGroup(Array.from({ length: groupLength }, (_, offset) => rowIndex + offset));
+      rowIndex += groupLength + 1;
+    }
+    return shortenedRows;
+  }
+
+  private getShorteningPercentages(groupLength: number): number[] {
+    const configured = this.shortening?.lengthPercentByRunLength?.[groupLength - 1];
+    const defaults = DEFAULT_SHORTENING_LENGTH_PERCENT[groupLength - 1];
+    return Array.from({ length: groupLength }, (_, index) => {
+      const percentage = configured?.[index] ?? defaults[index];
+      return Math.max(1, Math.min(100, Number.isFinite(percentage) ? percentage : 100));
+    });
+  }
+
+  private createShorteningRandom(seed: number): () => number {
+    let state = Number.isFinite(seed) ? seed >>> 0 : 0;
+    return () => {
+      state += 0x6d2b79f5;
+      let value = state;
+      value = Math.imul(value ^ (value >>> 15), value | 1);
+      value ^= value + Math.imul(value ^ (value >>> 7), value | 61);
+      return ((value ^ (value >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  private shuffleShorteningPercentages(
+    percentages: number[],
+    random: () => number,
+  ): void {
+    for (let i = percentages.length - 1; i > 0; i--) {
+      const j = Math.floor(random() * (i + 1));
+      [percentages[i], percentages[j]] = [percentages[j], percentages[i]];
+    }
+  }
+
+  private getRetainedSplitPoints(
+    originalSegment: { a: Coordinate; b: Coordinate },
+    shortenedSegment: { a: Coordinate; b: Coordinate },
+    split: SatinSplitOptions,
+    splitPx: number,
+    crossIdx: number,
+    pixelsPerMm: number,
+  ): Coordinate[] {
+    const splitPoints = this.splitSegment(
+      originalSegment,
+      split,
+      splitPx,
+      crossIdx,
+      pixelsPerMm,
+    );
+    splitPoints.pop();
+    if (splitPoints.length === 0) {
+      return splitPoints;
+    }
+
+    const epsilon = 1e-7;
+    const startMoved = originalSegment.a.distance(shortenedSegment.a) > epsilon;
+    const endMoved = originalSegment.b.distance(shortenedSegment.b) > epsilon;
+    if (!startMoved && !endMoved) {
+      return splitPoints;
+    }
+
+    const dx = originalSegment.b.x - originalSegment.a.x;
+    const dy = originalSegment.b.y - originalSegment.a.y;
+    const lengthSquared = dx * dx + dy * dy;
+    if (lengthSquared <= epsilon * epsilon) {
+      return [];
+    }
+
+    const project = (coord: Coordinate): number =>
+      ((coord.x - originalSegment.a.x) * dx + (coord.y - originalSegment.a.y) * dy) /
+      lengthSquared;
+    const shortenedStartT = startMoved ? project(shortenedSegment.a) : 0;
+    const shortenedEndT = endMoved ? project(shortenedSegment.b) : 1;
+
+    return splitPoints.filter((coord) => {
+      const t = project(coord);
+      if (startMoved && t <= shortenedStartT + epsilon) return false;
+      if (endMoved && t >= shortenedEndT - epsilon) return false;
+      return true;
+    });
   }
 
   splitSegment(
@@ -355,18 +686,17 @@ export class ClassicSatin implements IRun {
     const staggerEnabled = staggerCycles !== undefined && staggerCycles > 1;
 
     const numSegments = Math.ceil(dist / splitPx);
-    const rowShift =
-      staggerEnabled
-        ? this.getStaggerRowShift(
-            crossIdx,
-            staggerCycles,
-            split,
-            dist,
-            numSegments,
-            splitPx,
-            pixelsPerMm,
-          )
-        : 0;
+    const rowShift = staggerEnabled
+      ? this.getStaggerRowShift(
+          crossIdx,
+          staggerCycles,
+          split,
+          dist,
+          numSegments,
+          splitPx,
+          pixelsPerMm,
+        )
+      : 0;
 
     const coords: Coordinate[] = [];
     for (let j = 1; j < numSegments; j++) {

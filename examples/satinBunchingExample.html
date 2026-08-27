@@ -1,0 +1,536 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Split Satin Example</title>
+    <script src="../dist/stitch.global.js"></script>
+    <script>
+      window.Stitch ||
+        document.write(
+          '<script src="https://unpkg.com/@stitchables/stitchjs/dist/stitch.global.js">\x3C/script>',
+        );
+    </script>
+    <style>
+      body {
+        margin: 0;
+        background: #f0f0f0;
+        font:
+          13px system-ui,
+          sans-serif;
+      }
+      #labels {
+        position: fixed;
+        top: 12px;
+        left: 12px;
+        pointer-events: none;
+      }
+      #render {
+        position: absolute;
+        inset: 0;
+      }
+      #render canvas {
+        position: absolute;
+        inset: 0;
+        margin: auto;
+        pointer-events: none;
+      }
+      #effects {
+        position: fixed;
+        z-index: 2;
+        top: 16px;
+        left: 16px;
+        width: min(340px, calc(100vw - 32px));
+        box-sizing: border-box;
+        padding: 14px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        background: rgb(255 255 255 / 92%);
+        box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+      }
+      #effects h1 {
+        margin: 0 0 10px;
+        font-size: 15px;
+      }
+      #pattern-size {
+        position: fixed;
+        z-index: 2;
+        top: 16px;
+        right: 16px;
+        padding: 7px 9px;
+        border: 1px solid #ccc;
+        border-radius: 6px;
+        background: rgb(255 255 255 / 90%);
+        color: #444;
+        font-size: 12px;
+        line-height: 1.4;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+        box-shadow: 0 2px 8px rgb(0 0 0 / 10%);
+      }
+      #effects fieldset {
+        margin: 10px 0 0;
+        padding: 0;
+        border: 0;
+      }
+      .effect-toggle {
+        display: flex;
+        align-items: center;
+        gap: 7px;
+        font-weight: 650;
+      }
+      .settings {
+        display: grid;
+        gap: 8px;
+        margin: 10px 0 0 22px;
+      }
+      .setting-label {
+        display: block;
+        margin-bottom: 4px;
+        color: #333;
+      }
+      .value-controls {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr) 68px;
+        gap: 8px;
+        align-items: center;
+      }
+      .value-controls input[type='range'] {
+        width: 100%;
+        min-width: 0;
+      }
+      .value-controls input[type='number'] {
+        width: 100%;
+        box-sizing: border-box;
+      }
+      .settings[hidden] {
+        display: none;
+      }
+      #scrubber {
+        position: fixed;
+        z-index: 1;
+        right: 16px;
+        bottom: 16px;
+        left: 16px;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 10px 12px;
+        border: 1px solid #ccc;
+        border-radius: 8px;
+        background: rgb(255 255 255 / 90%);
+        box-shadow: 0 2px 8px rgb(0 0 0 / 12%);
+      }
+      #stitch-slider {
+        flex: 1;
+        min-width: 0;
+      }
+      #stitch-count {
+        min-width: 9em;
+        text-align: right;
+        font-variant-numeric: tabular-nums;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="render"></div>
+    <output id="pattern-size" aria-live="polite"></output>
+    <aside id="effects">
+      <h1>Satin effects</h1>
+      <fieldset>
+        <label class="effect-toggle">
+          <input id="shortening-enabled" type="checkbox" checked />
+          Stitch shortening
+        </label>
+        <div id="shortening-controls" class="settings">
+          <label>
+            <span class="setting-label">Trigger spacing (%)</span>
+            <span class="value-controls">
+              <input
+                id="shortening-trigger-range"
+                type="range"
+                min="1"
+                max="100"
+                step="1"
+                value="50"
+              />
+              <input
+                id="shortening-trigger-value"
+                type="number"
+                min="1"
+                max="100"
+                step="1"
+                value="50"
+              />
+            </span>
+          </label>
+          <label>
+            <span class="setting-label">Maximum consecutive</span>
+            <span class="value-controls">
+              <input
+                id="shortening-max-range"
+                type="range"
+                min="1"
+                max="5"
+                step="1"
+                value="5"
+              />
+              <input
+                id="shortening-max-value"
+                type="number"
+                min="1"
+                max="5"
+                step="1"
+                value="5"
+              />
+            </span>
+          </label>
+          <label class="effect-toggle">
+            <input id="shortening-randomize" type="checkbox" checked />
+            Randomize pattern
+          </label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <label class="effect-toggle">
+          <input id="fractional-enabled" type="checkbox" checked />
+          Fractional spacing
+        </label>
+        <div id="fractional-controls" class="settings" hidden>
+          <label>
+            <span class="setting-label">Offset fraction</span>
+            <span class="value-controls">
+              <input
+                id="fractional-offset-range"
+                type="range"
+                min="0"
+                max="1"
+                step="0.01"
+                value="0.33"
+              />
+              <input
+                id="fractional-offset-value"
+                type="number"
+                min="0"
+                max="1"
+                step="0.01"
+                value="0.33"
+              />
+            </span>
+          </label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <label class="effect-toggle">
+          <input id="split-enabled" type="checkbox" checked />
+          Stitch splitting
+        </label>
+        <div id="split-controls" class="settings">
+          <label>
+            <span class="setting-label">Maximum width (mm)</span>
+            <span class="value-controls">
+              <input
+                id="split-width-range"
+                type="range"
+                min="1"
+                max="20"
+                step="0.1"
+                value="7"
+              />
+              <input
+                id="split-width-value"
+                type="number"
+                min="1"
+                max="20"
+                step="0.1"
+                value="7"
+              />
+            </span>
+          </label>
+          <label>
+            <span class="setting-label">Stagger cycles</span>
+            <span class="value-controls">
+              <input
+                id="split-cycles-range"
+                type="range"
+                min="1"
+                max="10"
+                step="1"
+                value="4"
+              />
+              <input
+                id="split-cycles-value"
+                type="number"
+                min="1"
+                max="10"
+                step="1"
+                value="4"
+              />
+            </span>
+          </label>
+          <label>
+            <span class="setting-label">Stagger amount (mm)</span>
+            <span class="value-controls">
+              <input
+                id="split-stagger-range"
+                type="range"
+                min="0"
+                max="10"
+                step="0.1"
+                value="2"
+              />
+              <input
+                id="split-stagger-value"
+                type="number"
+                min="0"
+                max="10"
+                step="0.1"
+                value="2"
+              />
+            </span>
+          </label>
+        </div>
+      </fieldset>
+    </aside>
+    <label id="scrubber">
+      Stitch
+      <input id="stitch-slider" type="range" min="0" max="0" value="0" step="1" />
+      <output id="stitch-count" for="stitch-slider">0 / 0</output>
+    </label>
+    <script type="module">
+      await Stitch.init();
+
+      const opts = {
+        densityMm: 0.4,
+        travelLengthMm: 2,
+      };
+
+      const pattern = new Stitch.Core.Pattern(1000, 1000);
+      const thread = pattern.addThread(190, 55, 55);
+      const cornerSatin = new Stitch.Core.Runs.ClassicSatin(
+        [
+          new Stitch.Math.Vector(100, 400), new Stitch.Math.Vector(200, 400),
+
+          new Stitch.Math.Vector(100, 210), new Stitch.Math.Vector(200, 210),
+          new Stitch.Math.Vector(100, 100), new Stitch.Math.Vector(200, 200),
+          new Stitch.Math.Vector(210, 100), new Stitch.Math.Vector(210, 200),
+
+          new Stitch.Math.Vector(790, 100), new Stitch.Math.Vector(790, 200),
+          new Stitch.Math.Vector(900, 100), new Stitch.Math.Vector(800, 200),
+          new Stitch.Math.Vector(900, 210), new Stitch.Math.Vector(800, 210),
+
+          new Stitch.Math.Vector(900, 790), new Stitch.Math.Vector(800, 790),
+          new Stitch.Math.Vector(900, 900), new Stitch.Math.Vector(800, 800),
+          new Stitch.Math.Vector(790, 900), new Stitch.Math.Vector(790, 800),
+
+          new Stitch.Math.Vector(210, 900), new Stitch.Math.Vector(210, 800),
+          new Stitch.Math.Vector(100, 900), new Stitch.Math.Vector(200, 800),
+          new Stitch.Math.Vector(100, 790), new Stitch.Math.Vector(200, 790),
+
+          new Stitch.Math.Vector(100, 600), new Stitch.Math.Vector(200, 600),
+        ],
+        opts,
+      );
+      thread.addRun(cornerSatin);
+
+      const archVerts = [];
+      const archCenter = new Stitch.Math.Vector(500, 500);
+      for (let i = 0; i <= 100; i++) {
+        const dv = Stitch.Math.Vector.fromAngle(
+          Stitch.Math.Utils.map(i, 0, 100, 0, 1.5 * Math.PI) - Math.PI / 4 + Math.PI,
+        );
+        archVerts.push(archCenter.add(dv.multiply(20)));
+        archVerts.push(archCenter.add(dv.multiply(200)));
+      }
+      const archSatin = new Stitch.Core.Runs.ClassicSatin(archVerts, opts);
+      thread.addRun(archSatin);
+      const satinRuns = [cornerSatin, archSatin];
+
+      const slider = document.getElementById('stitch-slider');
+      const stitchCount = document.getElementById('stitch-count');
+      const patternSize = document.getElementById('pattern-size');
+      const container = document.getElementById('render');
+      const shorteningEnabled = document.getElementById('shortening-enabled');
+      const shorteningControls = document.getElementById('shortening-controls');
+      const shorteningTrigger = document.getElementById('shortening-trigger-value');
+      const shorteningMaximum = document.getElementById('shortening-max-value');
+      const shorteningRandomize = document.getElementById('shortening-randomize');
+      const fractionalEnabled = document.getElementById('fractional-enabled');
+      const fractionalControls = document.getElementById('fractional-controls');
+      const fractionalOffset = document.getElementById('fractional-offset-value');
+      const splitEnabled = document.getElementById('split-enabled');
+      const splitControls = document.getElementById('split-controls');
+      const splitWidth = document.getElementById('split-width-value');
+      const splitCycles = document.getElementById('split-cycles-value');
+      const splitStagger = document.getElementById('split-stagger-value');
+      let drawCurrentPlan = () => {};
+
+      function render() {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        container.replaceChildren();
+
+        const plan = pattern.getStitchPlan(w, h, 5);
+        const scale = 5 / plan.pixelsPerUnit;
+        const widthMm = pattern.widthPx / plan.pixelsPerUnit;
+        const heightMm = pattern.heightPx / plan.pixelsPerUnit;
+        patternSize.innerHTML = `${widthMm.toFixed(1)} &times; ${heightMm.toFixed(
+          1,
+        )} mm<br>${(widthMm / 25.4).toFixed(2)} &times; ${(heightMm / 25.4).toFixed(
+          2,
+        )} in`;
+        const translate = new Stitch.Math.Vector(
+          0.5 * (w - plan.width),
+          0.5 * (h - plan.height),
+        );
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        container.append(canvas);
+
+        const wasAtEnd = Number(slider.value) === Number(slider.max);
+        slider.max = plan.stitchCount;
+        slider.value = wasAtEnd
+          ? plan.stitchCount
+          : Math.min(Number(slider.value), plan.stitchCount);
+
+        drawCurrentPlan = () => {
+          const limit = Number(slider.value);
+          const ctx = canvas.getContext('2d');
+          ctx.clearRect(0, 0, w, h);
+          ctx.lineWidth = 1.5;
+          ctx.lineJoin = 'round';
+          ctx.strokeStyle = '#be3737';
+
+          let index = 0;
+          let currentPosition;
+          for (const t of plan.threads) {
+            for (const run of t.runs) {
+              for (let i = 0; i < run.length && index < limit; i++, index++) {
+                const stitch = run[i];
+                const p = stitch.position.multiply(scale).add(translate);
+                currentPosition = p;
+
+                if (i > 0) {
+                  const previous = run[i - 1].position.multiply(scale).add(translate);
+                  ctx.beginPath();
+                  ctx.moveTo(previous.x, previous.y);
+                  ctx.lineTo(p.x, p.y);
+                  ctx.stroke();
+                }
+
+                if (stitch.stitchType === 0) {
+                  ctx.fillStyle = '#000';
+                  ctx.fillRect(p.x, p.y, 2, 2);
+                }
+              }
+            }
+          }
+
+          if (currentPosition) {
+            ctx.fillStyle = '#fff';
+            ctx.strokeStyle = '#1677c8';
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(currentPosition.x, currentPosition.y, 4, 0, 2 * Math.PI);
+            ctx.fill();
+            ctx.stroke();
+          }
+
+          stitchCount.value = `${limit.toLocaleString()} / ${plan.stitchCount.toLocaleString()}`;
+        };
+
+        drawCurrentPlan();
+      }
+
+      function readClampedValue(input) {
+        const value = Number(input.value);
+        const minimum = Number(input.min);
+        const maximum = Number(input.max);
+        return Math.max(
+          minimum,
+          Math.min(maximum, Number.isFinite(value) ? value : minimum),
+        );
+      }
+
+      function bindValueInputs(rangeId, valueId, round = false) {
+        const range = document.getElementById(rangeId);
+        const value = document.getElementById(valueId);
+        range.addEventListener('input', () => {
+          value.value = range.value;
+          updateEffects();
+        });
+        value.addEventListener('input', () => {
+          if (value.value === '') return;
+          const nextValue = round
+            ? Math.round(readClampedValue(value))
+            : readClampedValue(value);
+          range.value = String(nextValue);
+          value.value = range.value;
+          updateEffects();
+        });
+        value.addEventListener('change', () => {
+          value.value = range.value;
+        });
+      }
+
+      function updateEffects() {
+        shorteningControls.hidden = !shorteningEnabled.checked;
+        fractionalControls.hidden = !fractionalEnabled.checked;
+        splitControls.hidden = !splitEnabled.checked;
+
+        const shortening = shorteningEnabled.checked
+          ? {
+              triggerSpacingPercent: readClampedValue(shorteningTrigger),
+              maxConsecutive: Math.round(readClampedValue(shorteningMaximum)),
+              randomize: shorteningRandomize.checked,
+            }
+          : undefined;
+        const fractionalSpacing = fractionalEnabled.checked
+          ? { offsetFraction: readClampedValue(fractionalOffset) }
+          : undefined;
+        const split = splitEnabled.checked
+          ? {
+              maxWidthMm: readClampedValue(splitWidth),
+              staggerCycles: Math.round(readClampedValue(splitCycles)),
+              staggerAmountMm: readClampedValue(splitStagger),
+            }
+          : undefined;
+
+        for (const satin of satinRuns) {
+          satin.shortening = shortening;
+          satin.fractionalSpacing = fractionalSpacing;
+          satin.split = split;
+        }
+        render();
+      }
+
+      bindValueInputs('shortening-trigger-range', 'shortening-trigger-value');
+      bindValueInputs('shortening-max-range', 'shortening-max-value', true);
+      bindValueInputs('fractional-offset-range', 'fractional-offset-value');
+      bindValueInputs('split-width-range', 'split-width-value');
+      bindValueInputs('split-cycles-range', 'split-cycles-value', true);
+      bindValueInputs('split-stagger-range', 'split-stagger-value');
+      shorteningEnabled.addEventListener('change', updateEffects);
+      shorteningRandomize.addEventListener('change', updateEffects);
+      fractionalEnabled.addEventListener('change', updateEffects);
+      splitEnabled.addEventListener('change', updateEffects);
+      updateEffects();
+      slider.addEventListener('input', () => drawCurrentPlan());
+
+      const modal = Stitch.Browser.Modal.createDownloadModal(
+        pattern,
+        'splitSatinExample',
+        10,
+        500,
+      );
+      document.body.appendChild(modal.container);
+      window.addEventListener('click', (e) => {
+        if (e.target === modal.container) modal.close();
+      });
+      window.addEventListener('keydown', (e) => {
+        if (e.code === 'KeyD') modal.open();
+      });
+      window.addEventListener('resize', Stitch.Browser.Utils.debounce(render, 10));
+    </script>
+  </body>
+</html>
