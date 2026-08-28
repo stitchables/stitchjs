@@ -34,6 +34,8 @@ export interface SatinShorteningOptions {
   triggerSpacingPercent?: number;
   /** Maximum shortened penetrations in a row. Values are limited to 0-5. */
   maxConsecutive?: number;
+  /** Maximum retained full-stitch spacing as a ratio of nominal spacing. */
+  fullStitchSpacingRatio?: number;
   /** Row n - 1 contains stitch-length percentages for a run of n short stitches. */
   lengthPercentByRunLength?: number[][];
   /** Shuffle each run's percentages to avoid a repeating visual line. */
@@ -481,17 +483,28 @@ export class ClassicSatin implements IRun {
     }
 
     const thresholdPx = this.densityMm * pixelsPerMm * (triggerSpacingPercent / 100);
+    const configuredFullStitchSpacingRatio = this.shortening.fullStitchSpacingRatio ?? 1;
+    const fullStitchSpacingRatio = Number.isFinite(configuredFullStitchSpacingRatio)
+      ? Math.max(0, configuredFullStitchSpacingRatio)
+      : 1;
+    const fullStitchSpacingPx = fullStitchSpacingRatio * this.densityMm * pixelsPerMm;
     const candidates: (SatinSide | undefined)[] = new Array(rows.length).fill(undefined);
+    const insideSpacings: number[] = new Array(rows.length).fill(0);
     const firstIndex = this.isClosed ? 0 : 1;
     const endIndex = this.isClosed ? rows.length : rows.length - 1;
 
-    for (let i = firstIndex; i < endIndex; i++) {
+    for (let i = firstIndex; i < rows.length; i++) {
       const previousIndex = (i - 1 + rows.length) % rows.length;
       const leftSpacing = rows[i].left.distance(rows[previousIndex].left);
       const rightSpacing = rows[i].right.distance(rows[previousIndex].right);
       const insideSpacing = Math.min(leftSpacing, rightSpacing);
+      insideSpacings[i] = insideSpacing;
 
-      if (insideSpacing < thresholdPx && Math.abs(leftSpacing - rightSpacing) > 1e-7) {
+      if (
+        i < endIndex &&
+        insideSpacing < thresholdPx &&
+        Math.abs(leftSpacing - rightSpacing) > 1e-7
+      ) {
         candidates[i] = leftSpacing < rightSpacing ? 'left' : 'right';
       }
     }
@@ -546,16 +559,28 @@ export class ClassicSatin implements IRun {
           cursor++;
         }
 
-        let groupStart = runStart;
-        while (groupStart < cursor) {
-          const remaining = cursor - groupStart;
-          const groupLength = Math.min(maxConsecutive, remaining);
-          applyGroup(orderedIndices.slice(groupStart, groupStart + groupLength));
-          groupStart += groupLength;
-          if (groupStart < cursor) {
-            groupStart++;
+        // maxConsecutive is a cap. Shorten only while the next retained full
+        // penetration will remain within nominal spacing on the compressed edge.
+        const shortenedGroup: number[] = [];
+        let distanceSinceFull = 0;
+        for (let position = runStart; position < cursor; position++) {
+          const rowIndex = orderedIndices[position];
+          distanceSinceFull += insideSpacings[rowIndex];
+          const nextIndex = orderedIndices[position + 1];
+          const nextSpacing = nextIndex === undefined ? 0 : insideSpacings[nextIndex];
+          const retainFullStitch =
+            shortenedGroup.length >= maxConsecutive ||
+            distanceSinceFull + nextSpacing > fullStitchSpacingPx;
+
+          if (retainFullStitch) {
+            if (shortenedGroup.length > 0) applyGroup(shortenedGroup);
+            shortenedGroup.length = 0;
+            distanceSinceFull = 0;
+          } else {
+            shortenedGroup.push(rowIndex);
           }
         }
+        if (shortenedGroup.length > 0) applyGroup(shortenedGroup);
       }
     };
 
@@ -565,29 +590,15 @@ export class ClassicSatin implements IRun {
     }
 
     const normalIndex = candidates.findIndex((side) => side === undefined);
-    if (normalIndex >= 0) {
-      const orderedIndices = rows.map(
-        (_, offset) => (normalIndex + 1 + offset) % rows.length,
-      );
-      applyLinearRuns(orderedIndices);
-      return shortenedRows;
-    }
-
-    if (rows.length <= maxConsecutive) {
-      applyGroup(rows.map((_, index) => index));
-      return shortenedRows;
-    }
-
-    const normalCount = Math.ceil(rows.length / (maxConsecutive + 1));
-    const shortenedCount = rows.length - normalCount;
-    const baseGroupLength = Math.floor(shortenedCount / normalCount);
-    const longerGroupCount = shortenedCount % normalCount;
-    let rowIndex = 0;
-    for (let groupIndex = 0; groupIndex < normalCount; groupIndex++) {
-      const groupLength = baseGroupLength + (groupIndex < longerGroupCount ? 1 : 0);
-      applyGroup(Array.from({ length: groupLength }, (_, offset) => rowIndex + offset));
-      rowIndex += groupLength + 1;
-    }
+    const anchorIndex = normalIndex >= 0 ? normalIndex : 0;
+    const anchorCandidate = candidates[anchorIndex];
+    candidates[anchorIndex] = undefined;
+    const orderedIndices = Array.from(
+      { length: rows.length + 1 },
+      (_, offset) => (anchorIndex + offset) % rows.length,
+    );
+    applyLinearRuns(orderedIndices);
+    candidates[anchorIndex] = anchorCandidate;
     return shortenedRows;
   }
 

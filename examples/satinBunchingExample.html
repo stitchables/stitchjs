@@ -184,6 +184,27 @@
               />
             </span>
           </label>
+          <label>
+            <span class="setting-label">Full stitch spacing ratio</span>
+            <span class="value-controls">
+              <input
+                id="shortening-full-spacing-range"
+                type="range"
+                min="0.5"
+                max="2"
+                step="0.05"
+                value="1"
+              />
+              <input
+                id="shortening-full-spacing-value"
+                type="number"
+                min="0.5"
+                max="2"
+                step="0.05"
+                value="1"
+              />
+            </span>
+          </label>
           <label class="effect-toggle">
             <input id="shortening-randomize" type="checkbox" checked />
             Randomize pattern
@@ -304,7 +325,7 @@
         travelLengthMm: 2,
       };
 
-      const pattern = new Stitch.Core.Pattern(1000, 1000);
+      const pattern = new Stitch.Core.Pattern(1500, 1000);
       const thread = pattern.addThread(190, 55, 55);
       const cornerSatin = new Stitch.Core.Runs.ClassicSatin(
         [
@@ -332,6 +353,26 @@
       );
       thread.addRun(cornerSatin);
 
+
+      const p1 = new Stitch.Math.Vector(1100, 800);
+      const p2 = new Stitch.Math.Vector(1400, 200);
+      const p3 = new Stitch.Math.Vector(1100, 400);
+      const d12 = p1.subtract(p2).normalized().rotate(0.5 * Math.PI);
+      const d23 = p2.subtract(p3).normalized().rotate(0.5 * Math.PI);
+      const width = 20;
+      const sharpCornerSatin = new Stitch.Core.Runs.ClassicSatin(
+        [
+          p1.add(d12.multiply(width)), p1.subtract(d12.multiply(width)),
+          p1.lerp(p2, 0.8).add(d12.multiply(width)), p1.lerp(p2, 0.8).subtract(d12.multiply(width)),
+          p2.add(d12.lerp(d23, 0.5).normalized().multiply(3.2 * width)),
+          p2.subtract(d12.lerp(d23, 0.5).normalized().multiply(4.5 * width)),
+          p3.lerp(p2, 0.7).add(d23.multiply(width)), p3.lerp(p2, 0.7).subtract(d23.multiply(width)),
+          p3.add(d23.multiply(width)), p3.subtract(d23.multiply(width)),
+        ],
+        opts,
+      )
+      thread.addRun(sharpCornerSatin);
+
       const archVerts = [];
       const archCenter = new Stitch.Math.Vector(500, 500);
       for (let i = 0; i <= 100; i++) {
@@ -343,7 +384,7 @@
       }
       const archSatin = new Stitch.Core.Runs.ClassicSatin(archVerts, opts);
       thread.addRun(archSatin);
-      const satinRuns = [cornerSatin, archSatin];
+      const satinRuns = [cornerSatin, sharpCornerSatin, archSatin];
 
       const slider = document.getElementById('stitch-slider');
       const stitchCount = document.getElementById('stitch-count');
@@ -353,6 +394,9 @@
       const shorteningControls = document.getElementById('shortening-controls');
       const shorteningTrigger = document.getElementById('shortening-trigger-value');
       const shorteningMaximum = document.getElementById('shortening-max-value');
+      const shorteningFullSpacing = document.getElementById(
+        'shortening-full-spacing-value',
+      );
       const shorteningRandomize = document.getElementById('shortening-randomize');
       const fractionalEnabled = document.getElementById('fractional-enabled');
       const fractionalControls = document.getElementById('fractional-controls');
@@ -482,6 +526,7 @@
           ? {
               triggerSpacingPercent: readClampedValue(shorteningTrigger),
               maxConsecutive: Math.round(readClampedValue(shorteningMaximum)),
+              fullStitchSpacingRatio: readClampedValue(shorteningFullSpacing),
               randomize: shorteningRandomize.checked,
             }
           : undefined;
@@ -506,6 +551,10 @@
 
       bindValueInputs('shortening-trigger-range', 'shortening-trigger-value');
       bindValueInputs('shortening-max-range', 'shortening-max-value', true);
+      bindValueInputs(
+        'shortening-full-spacing-range',
+        'shortening-full-spacing-value',
+      );
       bindValueInputs('fractional-offset-range', 'fractional-offset-value');
       bindValueInputs('split-width-range', 'split-width-value');
       bindValueInputs('split-cycles-range', 'split-cycles-value', true);
