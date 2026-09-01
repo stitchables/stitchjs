@@ -702,15 +702,17 @@ export class BCDFill implements IRun {
   }
 
   /**
-   * Plan quality for scheduler selection: travel length plus a flat charge
-   * for every fill that ends beside already-sealed work (the same "boxed
-   * ending" the exit selection avoids; the final cell is inherently
-   * surrounded and exempt).
+   * Plan quality for scheduler selection: travel and cross-row connector
+   * length, plus a flat charge for every fill that ends beside already-sealed
+   * work (the same "boxed ending" the exit selection avoids; the final cell
+   * is inherently surrounded and exempt).
    */
   private planScore(plan: BCDFillPlan, pixelsPerMm: number): number {
     const nominal = Math.max(this.rowSpacingMm * pixelsPerMm, 0.001);
     const walls: Array<[Pt, Pt]> = [];
     let boxed = 0,
+      connectorLength = 0,
+      connectorDiscontinuities = 0,
       fillIdx = 0;
     for (const s of plan.steps) {
       if (s.type === 'seal') {
@@ -718,12 +720,22 @@ export class BCDFill implements IRun {
         continue;
       }
       if (s.type !== 'fill' || !s.path.length) continue;
+      for (let index = 1; index + 1 < s.path.length; index += 2) {
+        const length = dist(s.path[index], s.path[index + 1]);
+        connectorLength += length;
+        if (length > 10 * nominal) connectorDiscontinuities++;
+      }
       fillIdx++;
       if (fillIdx >= plan.fillSequence.length) break;
       const e = s.path[s.path.length - 1];
       if (walls.some(([a, b]) => segDist(e, a, b) <= 2 * nominal)) boxed++;
     }
-    return plan.travelLength + boxed * 10 * nominal;
+    return (
+      plan.travelLength +
+      connectorLength +
+      connectorDiscontinuities * 100 * nominal +
+      boxed * 10 * nominal
+    );
   }
 
   private planTour(pixelsPerMm: number, tour: 'dfs' | 'peel'): BCDFillPlan {
@@ -1244,7 +1256,12 @@ export class BCDFill implements IRun {
       const r: { found: boolean; path: Pt[] } = cfinder
         ? cfinder.findPath(pos, target)
         : { found: false, path: [] };
-      if (bw && !r.found) {
+      // A medial-axis route can be technically valid yet wildly longer than
+      // a safe local boundary slide because each boundary endpoint first
+      // projects to a distant skeleton branch. Retain a 2x visual penalty for
+      // boundary travel, but do not accept a severe MAT out-and-back detour.
+      const matLen = r.found ? polylineLength(r.path) : Infinity;
+      if (bw && 2 * bwLen <= matLen) {
         pushTravel(bw, true);
         return;
       }
@@ -1379,16 +1396,61 @@ export class BCDFill implements IRun {
       return cs;
     };
 
-    // Swap the two ends of every lane: the same serpentine walked from the
-    // other side. Reverses every lane's stitch direction in the cell,
-    // trading a little texture coherence at its cuts (largely hidden by a
-    // staggered fillPattern) for a better-placed fill end.
-    const flipPhase = (corners: Pt[]): Pt[] => corners.map((_, i, a) => a[i ^ 1]);
+    type FillPhase = 0 | 1 | 2 | 3;
+    const fillPhases: FillPhase[] = [0, 1, 2, 3];
+
+    // Evaluate both row orders and both starting endpoint phases. Each later
+    // row is oriented toward the preceding endpoint, avoiding the cross-cell
+    // connectors produced by blindly swapping every pair. Reversing the rows
+    // matters for convergent cells: a row whose midpoint is far from the exit
+    // can still have an endpoint directly on that portal.
+    const phaseCorners = (corners: Pt[], phase: FillPhase): Pt[] => {
+      if (phase === 0) return corners;
+      const rows: Array<[Pt, Pt]> = [];
+      for (let index = 0; index + 1 < corners.length; index += 2)
+        rows.push([corners[index], corners[index + 1]]);
+      if (phase >= 2) rows.reverse();
+
+      const result: Pt[] = [];
+      let previous: Pt | undefined;
+      for (let index = 0; index < rows.length; index++) {
+        let [start, end] = rows[index];
+        if (
+          (index === 0 && phase % 2 === 1) ||
+          (index > 0 && previous && dist(previous, end) < dist(previous, start))
+        )
+          [start, end] = [end, start];
+        result.push(start, end);
+        previous = end;
+      }
+      return result;
+    };
+
+    const connectorStats = (
+      corners: Pt[],
+    ): { length: number; crossings: number; discontinuities: number } => {
+      let length = 0,
+        crossings = 0,
+        discontinuities = 0;
+      for (let connector = 1; connector + 1 < corners.length; connector += 2) {
+        const start = corners[connector];
+        const end = corners[connector + 1];
+        const connectorLength = dist(start, end);
+        length += connectorLength;
+        if (connectorLength > 10 * nominal) discontinuities++;
+        for (let lane = 0; lane + 1 < corners.length; lane += 2) {
+          if (lane === connector - 1 || lane === connector + 1) continue;
+          if (properCross(start, end, corners[lane], corners[lane + 1], grazeTol))
+            crossings++;
+        }
+      }
+      return { length, crossings, discontinuities };
+    };
 
     const fillSequence: number[] = [];
-    const fill = (c: number, exitPt: Pt, flip = false): Pt[] => {
+    const fill = (c: number, exitPt: Pt, phase: FillPhase = 0): Pt[] => {
       let corners = cornersFor(c, exitPt);
-      if (flip && corners.length >= 2) corners = flipPhase(corners);
+      if (phase && corners.length >= 2) corners = phaseCorners(corners, phase);
       fillSequence.push(c);
       if (!corners.length) return corners;
       route(corners[0]); // onto the first lane end, along the medial axis
@@ -1588,11 +1650,10 @@ export class BCDFill implements IRun {
     // from `from`, the exit hop at 3x (it is stitched ON the finished fill
     // and stays visible, while entry/onward legs cross bare ground that
     // later fills bury — AutoFill's outline weight), plus the leg to the
-    // nearest of `targets`. Exit choice never changes lane stitch direction,
-    // so it is texture-safe in 'global' mode as well.
+    // nearest of `targets`.
     type ExitChoice = {
       nb: number;
-      flip: boolean;
+      phase: FillPhase;
       bad: number;
       cost: number;
       exitAt: Pt;
@@ -1611,23 +1672,27 @@ export class BCDFill implements IRun {
         if (this.underpath && filledSet.has(nb)) continue;
         const exitPt = portalMid(c, nb);
         const base = cornersFor(c, exitPt);
-        const phases: Array<[Pt[], boolean]> =
+        const phases: Array<[Pt[], FillPhase]> =
           base.length >= 2
-            ? [
-                [base, false],
-                [flipPhase(base), true],
-              ]
-            : [[base, false]];
-        for (const [cs, flip] of phases) {
+            ? fillPhases.map((phase) => [phaseCorners(base, phase), phase])
+            : [[base, 0]];
+        for (const [cs, phase] of phases) {
           let bad = 0,
             cost: number,
             exitAt = exitPt;
           if (cs.length) {
+            const connectors = connectorStats(cs);
+            bad = 1000 * connectors.crossings + 10 * connectors.discontinuities;
             const last = cs[cs.length - 1];
             if (this.underpath) {
               exitAt = portalClosest(c, nb, last);
-              bad = nearSealedFor(last, filledSet) ? 1 : 0;
-              cost = dist(from, cs[0]) + 3 * dist(last, exitAt);
+              const hop = exitHop(c, cs, exitAt);
+              const hopLength = hop ? polylineLength(hop) : dist(last, exitAt);
+              // A critical-vertex endpoint may touch a sealed wall and the
+              // selected open portal simultaneously. It is not boxed when it
+              // can leave through that portal without moving.
+              if (hopLength > grazeTol && nearSealedFor(last, filledSet)) bad++;
+              cost = dist(from, cs[0]) + 3 * hopLength;
             } else {
               // Border mode: no exit hop — the walk stays at the fill end
               // and travels along the border, so legs are priced by border
@@ -1636,6 +1701,7 @@ export class BCDFill implements IRun {
               exitAt = last;
               cost = borderDist(from, cs[0]);
             }
+            cost += connectors.length;
           } else {
             cost = dist(from, exitPt); // laneless cell: just walk through
           }
@@ -1647,7 +1713,7 @@ export class BCDFill implements IRun {
             );
           if (toNext < Infinity) cost += toNext;
           if (!best || bad < best.bad || (bad === best.bad && cost < best.cost)) {
-            best = { nb, flip, bad, cost, exitAt, entry: cs.length ? cs[0] : null };
+            best = { nb, phase, bad, cost, exitAt, entry: cs.length ? cs[0] : null };
           }
         }
       }
@@ -1655,8 +1721,8 @@ export class BCDFill implements IRun {
     };
     // Fill `c`, hop out lane-safely through the chosen exit portal, seal —
     // the shared execution step for both tour schedulers.
-    const fillAndSeal = (c: number, exitNb: number, flip: boolean) => {
-      const corners = fill(c, portalMid(c, exitNb), flip);
+    const fillAndSeal = (c: number, exitNb: number, phase: FillPhase) => {
+      const corners = fill(c, portalMid(c, exitNb), phase);
       if (this.underpath) {
         const from = corners.length ? corners[corners.length - 1] : pos;
         const exit = portalClosest(c, exitNb, from);
@@ -1670,21 +1736,45 @@ export class BCDFill implements IRun {
       seal(c);
     };
     // The end cell finishes the tour: its exit is the end point itself; only
-    // the serpentine phase is free.
+    // the row order and serpentine phase are free.
     const finishEndCell = () => {
-      let flip = false;
+      let selectedPhase: FillPhase = 0;
       {
         const base = cornersFor(endCell, end);
         if (base.length >= 2) {
-          const flipped = flipPhase(base);
-          const score = (cs: Pt[]) => dist(pos, cs[0]) + 3 * dist(cs[cs.length - 1], end);
-          const baseBad = nearSealedFor(base[base.length - 1], filled);
-          const flipBad = nearSealedFor(flipped[flipped.length - 1], filled);
-          if (baseBad !== flipBad) flip = baseBad;
-          else flip = score(flipped) < score(base);
+          const score = (cs: Pt[]) => {
+            const connectors = connectorStats(cs);
+            const last = cs[cs.length - 1];
+            const hop = exitHop(endCell, cs, end);
+            const hopLength = hop ? polylineLength(hop) : dist(last, end);
+            return dist(pos, cs[0]) + 3 * hopLength + connectors.length;
+          };
+          const badness = (cs: Pt[]) => {
+            const connectors = connectorStats(cs);
+            const last = cs[cs.length - 1];
+            const hop = exitHop(endCell, cs, end);
+            const hopLength = hop ? polylineLength(hop) : dist(last, end);
+            return (
+              1000 * connectors.crossings +
+              10 * connectors.discontinuities +
+              (hopLength > grazeTol && nearSealedFor(last, filled) ? 1 : 0)
+            );
+          };
+          let bestBad = Infinity;
+          let bestScore = Infinity;
+          for (const phase of fillPhases) {
+            const candidate = phaseCorners(base, phase);
+            const bad = badness(candidate);
+            const candidateScore = score(candidate);
+            if (bad < bestBad || (bad === bestBad && candidateScore < bestScore)) {
+              selectedPhase = phase;
+              bestBad = bad;
+              bestScore = candidateScore;
+            }
+          }
         }
       }
-      const corners = fill(endCell, end, flip);
+      const corners = fill(endCell, end, selectedPhase);
       if (dist(pos, end) >= 1e-12) {
         const hop = exitHop(endCell, corners, end);
         if (hop) pushTravel(hop, true);
@@ -1849,12 +1939,12 @@ export class BCDFill implements IRun {
             }
             const choice = evalExits(c2, filled, pos, targets);
             if (choice) {
-              fillAndSeal(c2, choice.nb, choice.flip);
+              fillAndSeal(c2, choice.nb, choice.phase);
             } else {
               const fallback = adjacency[c2].find((nb) => !filled.has(nb));
-              if (fallback !== undefined) fillAndSeal(c2, fallback, false);
+              if (fallback !== undefined) fillAndSeal(c2, fallback, 0);
               else {
-                fill(c2, end, false); // unreachable for a legal order
+                fill(c2, end, 0); // unreachable for a legal order
                 seal(c2);
               }
             }
@@ -1983,8 +2073,8 @@ export class BCDFill implements IRun {
                 ? kids2.map((nb) => entryOf(nb, parent))
                 : [ownStart(parent, pframe ? pframe.parent : -1)];
               const choice = evalExits(cell, filled, pos, targets);
-              if (choice) fillAndSeal(cell, choice.nb, choice.flip);
-              else fillAndSeal(cell, parent, false);
+              if (choice) fillAndSeal(cell, choice.nb, choice.phase);
+              else fillAndSeal(cell, parent, 0);
             } else {
               finishEndCell();
             }
